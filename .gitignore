@@ -1,0 +1,17 @@
+node_modules/
+.next
+dist/
+.vite/
+__pycache__/
+*.pyc
+.DS_Store
+*.pem
+.env*
+!.env.example
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+*.tsbuildinfo
+backend/data
+backend/uploads
