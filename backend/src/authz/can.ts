@@ -2,7 +2,7 @@ import { and, eq } from "drizzle-orm";
 import type { SessionUser } from "../app/auth-hook.js";
 import type { DbProvider } from "../infrastructure/db/client.js";
 import { forbidden } from "../app/error.js";
-import { boardMembers } from "../infrastructure/db/schema.js";
+import { boardMembers, feedbackProjectMembers } from "../infrastructure/db/schema.js";
 import type { BoardVisibility, PostingPolicy } from "../infrastructure/db/schema.js";
 
 /** 授权查询所需的最小上下文。 */
@@ -39,6 +39,12 @@ export const Abilities = {
   adminView: "admin.view",
   adminUserRoleUpdate: "admin.user.role.update",
   adminUserStatusUpdate: "admin.user.status.update",
+  feedbackView: "feedback.view",
+  feedbackCreate: "feedback.create",
+  feedbackUpdate: "feedback.update",
+  feedbackDelete: "feedback.delete",
+  feedbackManage: "feedback.manage",
+  feedbackProjectManage: "feedback.project.manage",
 } as const;
 
 export type Ability = (typeof Abilities)[keyof typeof Abilities];
@@ -51,6 +57,8 @@ export type Resource =
   | { type: "reply"; id: number; authorId: number; discussionId: number }
   | { type: "user"; id: number }
   | { type: "attachment"; id: number; uploaderId: number }
+  | { type: "feedbackProject"; id: number }
+  | { type: "feedbackItem"; id: number; projectId: number; authorId: number; deletedAt: Date | null }
   | null;
 
 function isActive(actor: SessionUser | null): boolean {
@@ -83,6 +91,34 @@ function isBoardMod(actor: SessionUser | null, boardId: number, c: AuthzCtx): Pr
     .then(Boolean);
 }
 
+function isProjectMember(actor: SessionUser | null, projectId: number, c: AuthzCtx): Promise<boolean> {
+  if (!actor) return Promise.resolve(false);
+  return c.db.db
+    .select()
+    .from(feedbackProjectMembers)
+    .where(
+      and(eq(feedbackProjectMembers.project_id, projectId), eq(feedbackProjectMembers.user_id, actor.id)),
+    )
+    .get()
+    .then(Boolean);
+}
+
+function isProjectProgrammer(actor: SessionUser | null, projectId: number, c: AuthzCtx): Promise<boolean> {
+  if (!actor) return Promise.resolve(false);
+  return c.db.db
+    .select()
+    .from(feedbackProjectMembers)
+    .where(
+      and(
+        eq(feedbackProjectMembers.project_id, projectId),
+        eq(feedbackProjectMembers.user_id, actor.id),
+        eq(feedbackProjectMembers.is_programmer, 1),
+      ),
+    )
+    .get()
+    .then(Boolean);
+}
+
 /**
  * 授权判定。`resource` 是目标领域对象；不依赖资源的操作（如发帖）可传 null。
  * 所有模块一律经此入口。
@@ -109,6 +145,7 @@ export async function can(actor: Actor, ability: Ability, resource: Resource, c:
     case Abilities.adminView:
     case Abilities.adminUserRoleUpdate:
     case Abilities.adminUserStatusUpdate:
+    case Abilities.feedbackProjectManage:
       return actor?.role === "admin";
   }
 
@@ -176,6 +213,32 @@ export async function can(actor: Actor, ability: Ability, resource: Resource, c:
 
     case Abilities.attachmentDelete:
       return actor !== null && resource.type === "attachment" && resource.uploaderId === actor.id;
+
+    case Abilities.feedbackView:
+    case Abilities.feedbackCreate: {
+      if (!actor || actor.status !== "active") return false;
+      const p = resource as Extract<Resource, { type: "feedbackProject" }>;
+      if (actor.role === "admin") return true;
+      return isProjectMember(actor, p.id, c);
+    }
+
+    case Abilities.feedbackUpdate:
+    case Abilities.feedbackDelete: {
+      const f = resource as Extract<Resource, { type: "feedbackItem" }>;
+      if (actor?.role === "admin") return true;
+      if (!actor || actor.status !== "active") return false;
+      if (f.authorId === actor.id) {
+        if (ability === Abilities.feedbackDelete) return true;
+        return f.deletedAt === null;
+      }
+      return isProjectProgrammer(actor, f.projectId, c);
+    }
+
+    case Abilities.feedbackManage: {
+      const f = resource as Extract<Resource, { type: "feedbackItem" }>;
+      if (actor?.role === "admin") return true;
+      return actor !== null && actor.status === "active" && isProjectProgrammer(actor, f.projectId, c);
+    }
 
     default:
       return false;

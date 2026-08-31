@@ -7,7 +7,7 @@ import { formatTime } from "./lib/format";
 import { AppShell } from "./app-shell";
 import { ThreadIcon } from "./icons";
 
-export function ThreadPage({ id }: { id: number }) {
+export function ThreadPage({ id, initialTitle }: { id: number; initialTitle?: string }) {
   const { user } = useAuth();
   const [detail, setDetail] = useState<DiscussionDetail | null>(null);
   const [replies, setReplies] = useState<ReplyDTO[]>([]);
@@ -290,7 +290,19 @@ export function ThreadPage({ id }: { id: number }) {
   };
 
   if (loading) {
-    return <AppShell><Loading /></AppShell>;
+    return (
+      <AppShell>
+        <main className="shell thread-layout" id="main-content">
+          {initialTitle ? (
+            <article className="thread-article thread-loading-article" aria-label="Loading discussion">
+              <div className="thread-flags-placeholder" aria-hidden="true" />
+              <h1 className="thread-detail-title thread-shared-title">{initialTitle}</h1>
+              <Loading />
+            </article>
+          ) : <Loading />}
+        </main>
+      </AppShell>
+    );
   }
   if (notFound || !detail) {
     return <AppShell><div className="empty-state content-fade">This discussion could not be found.</div></AppShell>;
@@ -301,7 +313,7 @@ export function ThreadPage({ id }: { id: number }) {
   return (
     <AppShell>
       <main className="shell thread-layout" id="main-content">
-        <article className="thread-article content-fade" aria-labelledby="thread-title">
+        <article className="thread-article thread-article-enter" aria-labelledby="thread-title">
           <div className="thread-flags">
             <a className="tag" href={`/?board=${encodeURIComponent(detail.board.slug)}`}>{detail.board.name}</a>
             {detail.isPinned && <span className="flag">Pinned</span>}
@@ -325,9 +337,10 @@ export function ThreadPage({ id }: { id: number }) {
             </form>
           ) : (
             <>
-              <h1 className="thread-detail-title" id="thread-title">{detail.title}</h1>
+              <h1 className={`thread-detail-title ${initialTitle ? "thread-shared-title" : ""}`} id="thread-title">{detail.title}</h1>
               <div className="thread-detail-meta">
                 <a className="sender" href={`/profile?username=${encodeURIComponent(detail.author.username)}`}>{detail.author.displayName}</a>
+                <a className="muted-link" href={`/profile?username=${encodeURIComponent(detail.author.username)}`}>@{detail.author.handle}</a>
                 <span className="dot" />
                 <span>{formatTime(detail.createdAt)}</span>
               </div>
@@ -411,6 +424,7 @@ export function ThreadPage({ id }: { id: number }) {
                 <div className={`reply ${reply.parentReplyId ? "is-thread" : ""}`} key={reply.id}>
                   <div className="reply-head">
                     <a className="sender" href={`/profile?username=${encodeURIComponent(reply.author.username)}`}>{reply.author.displayName}</a>
+                    <a className="muted-link" href={`/profile?username=${encodeURIComponent(reply.author.username)}`}>@{reply.author.handle}</a>
                     <span className="dot" />
                     <span>{formatTime(reply.createdAt)}</span>
                     {(isStaff || user?.id === reply.author.id) && (

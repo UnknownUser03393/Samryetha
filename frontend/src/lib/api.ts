@@ -1,7 +1,7 @@
 // 薄 API client：同源 fetch（走 Vite dev proxy / Express 生产 proxy → 后端 3001），
 // 统一解析后端错误模型 `{ error: { code, message, requestId, details? } }`。
 
-export type AuthorRef = { id: number; username: string; displayName: string };
+export type AuthorRef = { id: number; username: string; handle: string; displayName: string };
 export type BoardRef = { id: number; slug: string; name: string };
 export type UserRole = "student" | "moderator" | "admin";
 export type UserStatus = "pending" | "active" | "banned" | "deactivated";
@@ -60,6 +60,7 @@ export type BoardSummary = {
 export type UserDTO = {
   id: number;
   username: string;
+  handle: string;
   displayName: string;
   email: string;
   role: UserRole;
@@ -75,6 +76,7 @@ export type UserDTO = {
 export type PublicProfile = {
   id: number;
   username: string;
+  handle: string;
   displayName: string;
   bio: string;
   avatarObjectKey: string | null;
@@ -102,6 +104,7 @@ export type SearchResult = { items: ThreadSummary[]; total: number };
 export type AdminUser = {
   id: number;
   username: string;
+  handle: string;
   displayName: string;
   email: string;
   role: UserRole;
@@ -132,6 +135,7 @@ export type ReportTarget = {
   title?: string;
   boardSlug?: string;
   username?: string;
+  handle?: string;
   displayName?: string;
   discussionId?: number;
 };
@@ -177,7 +181,67 @@ export type DeletedReply = {
   reason: string | null;
 };
 
-export type BoardMember = { id: number; username: string; displayName: string; role: "member" | "moderator" };
+export type BoardMember = { id: number; username: string; handle: string; displayName: string; role: "member" | "moderator" };
+
+export type FeedbackType = "bug" | "suggestion";
+export type FeedbackUrgency = "urgent" | "normal";
+export type FeedbackStatus = "open" | "done" | "expired";
+
+export type FeedbackItem = {
+  id: number;
+  seq: number;
+  projectId: number;
+  author: AuthorRef;
+  title: string;
+  detail: string;
+  type: FeedbackType;
+  urgency: FeedbackUrgency;
+  status: FeedbackStatus;
+  closedAt: number | null;
+  editedAt: number | null;
+  createdAt: number;
+  updatedAt: number;
+};
+
+export type FeedbackProjectSummary = {
+  id: number;
+  name: string;
+  description: string;
+  memberCount: number;
+  isProgrammer: boolean;
+  createdAt: number;
+};
+
+export type FeedbackProjectMember = {
+  userId: number;
+  username: string;
+  handle: string;
+  displayName: string;
+  isProgrammer: boolean;
+  joinedAt: number;
+};
+
+export type FeedbackProjectAdmin = {
+  id: number;
+  name: string;
+  description: string;
+  members: FeedbackProjectMember[];
+  createdAt: number;
+};
+
+export type FeedbackApiKey = {
+  id: number;
+  name: string;
+  prefix: string;
+  role: "read" | "write";
+  projectIds: number[];
+  enabled: boolean;
+  lastUsedAt: number | null;
+  createdAt: number;
+};
+
+export type FeedbackBackupInfo = { name: string; size: number; createdAt: number };
+export type FeedbackBackupSettings = { backupCron: string; backupKeep: number };
 
 export type ApiErrorPayload = { code: string; message: string; requestId?: string; details?: unknown };
 
@@ -226,15 +290,11 @@ const qs = (params: Record<string, string | number | undefined>) => {
 export const api = {
   auth: {
     me: () => apiFetch<{ user: UserDTO }>("/api/auth/me"),
-    login: (body: { email: string; password: string }) =>
+    login: (body: { username: string; password: string }) =>
       apiFetch<{ user: UserDTO; sessionExpiresAt: number }>("/api/auth/login", { method: "POST", body }),
     logout: () => apiFetch<void>("/api/auth/logout", { method: "POST" }),
-    register: (body: { email: string; username: string; displayName: string; password: string }) =>
+    register: (body: { username: string; password: string }) =>
       apiFetch<{ userId: number; message: string }>("/api/auth/register", { method: "POST", body }),
-    verifyEmail: (body: { email: string; code: string }) =>
-      apiFetch<{ ok: boolean; user: UserDTO }>("/api/auth/verify-email", { method: "POST", body }),
-    resendVerification: (email: string) => apiFetch<{ ok: boolean }>("/api/auth/resend-verification", { method: "POST", body: { email } }),
-    forgotPassword: (email: string) => apiFetch<{ ok: boolean }>("/api/auth/forgot-password", { method: "POST", body: { email } }),
     changePassword: (body: { currentPassword: string; newPassword: string }) =>
       apiFetch<{ ok: boolean }>("/api/auth/change-password", { method: "POST", body }),
   },
@@ -249,7 +309,7 @@ export const api = {
       apiFetch<FeedPage<ThreadSummary>>(`/api/users/${encodeURIComponent(username)}/saved${qs({ cursor })}`),
     follow: (username: string) => apiFetch<void>(`/api/users/${encodeURIComponent(username)}/follow`, { method: "POST" }),
     unfollow: (username: string) => apiFetch<void>(`/api/users/${encodeURIComponent(username)}/follow`, { method: "DELETE" }),
-    updateProfile: (patch: { displayName?: string; username?: string; bio?: string }) =>
+    updateProfile: (patch: { displayName?: string; username?: string; bio?: string; settings?: Record<string, boolean> }) =>
       apiFetch<{ user: UserDTO }>("/api/me/profile", { method: "PATCH", body: patch }),
   },
 
@@ -335,5 +395,40 @@ export const api = {
   presence: {
     heartbeat: () => apiFetch<{ onlineCount: number }>("/api/presence/heartbeat", { method: "POST" }),
     get: () => apiFetch<Presence>("/api/presence"),
+  },
+
+  feedback: {
+    myProjects: () => apiFetch<{ items: FeedbackProjectSummary[] }>("/api/feedback/projects/mine"),
+    list: (projectId: number) => apiFetch<{ items: FeedbackItem[]; canManage: boolean }>(`/api/feedback?projectId=${projectId}`),
+    create: (body: { projectId: number; title: string; detail?: string; type: FeedbackType; urgency?: FeedbackUrgency }) =>
+      apiFetch<FeedbackItem>("/api/feedback", { method: "POST", body }),
+    update: (id: number, body: { title?: string; detail?: string; type?: FeedbackType; urgency?: FeedbackUrgency }) =>
+      apiFetch<FeedbackItem>(`/api/feedback/${id}`, { method: "PATCH", body }),
+    del: (id: number) => apiFetch<void>(`/api/feedback/${id}`, { method: "DELETE", body: {} }),
+    setStatus: (id: number, status: FeedbackStatus) =>
+      apiFetch<FeedbackItem>(`/api/feedback/${id}/status`, { method: "POST", body: { status } }),
+  },
+
+  feedbackAdmin: {
+    projects: () => apiFetch<{ items: FeedbackProjectAdmin[] }>("/api/feedback/projects"),
+    createProject: (body: { name: string; description?: string }) =>
+      apiFetch<FeedbackProjectAdmin>("/api/feedback/projects", { method: "POST", body }),
+    updateProject: (id: number, body: { name?: string; description?: string }) =>
+      apiFetch<void>(`/api/feedback/projects/${id}`, { method: "PATCH", body }),
+    delProject: (id: number) => apiFetch<void>(`/api/feedback/projects/${id}`, { method: "DELETE", body: {} }),
+    setMembers: (id: number, members: { userId: number; isProgrammer: boolean }[]) =>
+      apiFetch<void>(`/api/feedback/projects/${id}/members`, { method: "PUT", body: { members } }),
+    keys: () => apiFetch<{ items: FeedbackApiKey[] }>("/api/admin/feedback/keys"),
+    createKey: (body: { name: string; role: "read" | "write"; projectIds: number[] }) =>
+      apiFetch<{ key: string; keyRow: FeedbackApiKey }>("/api/admin/feedback/keys", { method: "POST", body }),
+    setKeyEnabled: (id: number, enabled: boolean) =>
+      apiFetch<void>(`/api/admin/feedback/keys/${id}`, { method: "PUT", body: { enabled } }),
+    delKey: (id: number) => apiFetch<void>(`/api/admin/feedback/keys/${id}`, { method: "DELETE", body: {} }),
+    backups: () => apiFetch<{ backups: FeedbackBackupInfo[]; settings: FeedbackBackupSettings }>("/api/admin/feedback/backups"),
+    createBackup: () => apiFetch<{ backup: FeedbackBackupInfo }>("/api/admin/feedback/backups/create", { method: "POST", body: {} }),
+    restoreBackup: (name: string) =>
+      apiFetch<{ ok: boolean; restartRequired: boolean }>("/api/admin/feedback/backups/restore", { method: "POST", body: { name } }),
+    saveBackupSettings: (body: FeedbackBackupSettings) =>
+      apiFetch<void>("/api/admin/feedback/backups/settings", { method: "PUT", body }),
   },
 };

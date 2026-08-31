@@ -46,7 +46,7 @@ export function UserMenu({ current }: { current?: UserMenuLocation }) {
       <div className={`user-menu-popover ${open ? "open" : ""}`} role="menu" aria-label="Account" aria-hidden={!open}>
         <a className="user-menu-profile" href="/profile" role="menuitem" tabIndex={open ? 0 : -1} onClick={() => setOpen(false)}>
           <span className="user-menu-avatar" aria-hidden="true">{initials(user.displayName)}</span>
-          <span><strong>{user.displayName}</strong><small>@{user.username}</small></span>
+          <span><strong>{user.displayName}</strong><small>@{user.handle}</small></span>
         </a>
         <div className="user-menu-divider" role="separator" />
         <a className="user-menu-item" href="/settings" role="menuitem" tabIndex={open ? 0 : -1} onClick={() => setOpen(false)}><SettingsIcon /><span>Settings</span></a>

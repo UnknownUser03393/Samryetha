@@ -19,6 +19,7 @@ import type { Container } from "./container.js";
 import { buildContainer } from "./container.js";
 import { AppError, ErrorCodes } from "./error.js";
 import { loadEnv } from "../config/env.js";
+import { ensureBuiltInAccounts } from "../auth/bootstrap.js";
 import { registerAuthHook } from "./auth-hook.js";
 import { registerAuthModule } from "../auth/routes.js";
 import { registerUserRoutes } from "../users/routes.js";
@@ -32,6 +33,7 @@ import { registerPresenceRoutes } from "../presence/routes.js";
 import { registerRealtimeRoutes } from "../realtime/routes.js";
 import { registerModerationModule } from "../moderation/routes.js";
 import { registerAdminModule } from "../admin/routes.js";
+import { registerFeedbackModule } from "../feedback/routes.js";
 
 export async function buildApp(container: Container): Promise<FastifyInstance> {
   const { env } = container;
@@ -159,6 +161,7 @@ export async function buildApp(container: Container): Promise<FastifyInstance> {
   registerRealtimeRoutes(app, container);
   registerModerationModule(app, container);
   registerAdminModule(app, container);
+  registerFeedbackModule(app, container);
 
   return app;
 }
@@ -180,7 +183,11 @@ async function main(): Promise<void> {
   const container = await buildContainer(env, { runMigrations: true });
   const app = await buildApp(container);
 
+  // 迁移已在 buildContainer 内完成；确保内置 admin/dev 账号存在（幂等）。
+  await ensureBuiltInAccounts(container.db, container.env, container.logger);
+
   container.outboxWorker.start();
+  container.feedbackBackupService.start();
 
   const shutdown = async (signal: string) => {
     app.log.info({ signal }, "shutting down");

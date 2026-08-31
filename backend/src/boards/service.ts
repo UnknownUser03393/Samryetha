@@ -9,6 +9,7 @@ import {
   type PostingPolicy,
 } from "../infrastructure/db/schema.js";
 import { conflict, notFound } from "../app/error.js";
+import { makeHandle } from "../users/service.js";
 
 export interface BoardSummary {
   id: number;
@@ -41,7 +42,7 @@ export interface BoardService {
   deleteBoard(actorId: number, slug: string, reason?: string): Promise<void>;
   joinBoard(userId: number, slug: string): Promise<void>;
   leaveBoard(userId: number, slug: string): Promise<void>;
-  listMembers(slug: string): Promise<{ id: number; username: string; displayName: string; role: string }[]>;
+  listMembers(slug: string): Promise<{ id: number; username: string; handle: string; displayName: string; role: string }[]>;
   updateMemberRole(actorId: number, slug: string, userId: number, role: "member" | "moderator"): Promise<void>;
 }
 
@@ -174,16 +175,18 @@ export function createBoardService(db: DbProvider): BoardService {
     async listMembers(slug) {
       const board = await getBySlug(slug);
       if (!board) throw notFound("Board not found");
-      return db.db
+      const rows = await db.db
         .select({
           id: users.id,
           username: users.username,
           displayName: users.display_name,
+          discriminator: users.discriminator,
           role: boardMembers.role,
         })
         .from(boardMembers)
         .innerJoin(users, eq(boardMembers.user_id, users.id))
         .where(eq(boardMembers.board_id, board.id));
+      return rows.map((r) => ({ id: r.id, username: r.username, handle: makeHandle(r.username, r.discriminator), displayName: r.displayName, role: r.role }));
     },
 
     async updateMemberRole(actorId, slug, userId, role) {

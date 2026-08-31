@@ -17,6 +17,7 @@ import {
 import { Abilities, assertCan, can, type Actor, type AuthzCtx } from "../authz/can.js";
 import { forbidden, notFound } from "../app/error.js";
 import { renderMarkdown } from "../infrastructure/markdown.js";
+import { makeHandle } from "../users/service.js";
 import { toMs } from "../lib/time.js";
 import type { BoardService } from "../boards/service.js";
 
@@ -31,6 +32,8 @@ export interface BoardRef {
 export interface AuthorRef {
   id: number;
   username: string;
+  /** 展示用 handle，如 sora#1482 */
+  handle: string;
   displayName: string;
 }
 
@@ -105,8 +108,8 @@ function preview(md: string): string {
   return flat.length > 160 ? `${flat.slice(0, 160)}…` : flat;
 }
 
-function toAuthor(row: { id: number; username: string; display_name: string }): AuthorRef {
-  return { id: row.id, username: row.username, displayName: row.display_name };
+function toAuthor(row: { id: number; username: string; display_name: string; discriminator: number | null }): AuthorRef {
+  return { id: row.id, username: row.username, handle: makeHandle(row.username, row.discriminator), displayName: row.display_name };
 }
 
 export function createDiscussionService(db: DbProvider, boardService: BoardService, c: AuthzCtx): DiscussionService {
@@ -196,7 +199,7 @@ export function createDiscussionService(db: DbProvider, boardService: BoardServi
         title: r.title,
         preview: preview(r.body_md),
         board: { id: r.board_id, slug: board?.slug ?? "", name: board?.name ?? "" },
-        author: { id: r.author_id, username: author?.username ?? "", displayName: author?.display_name ?? "" },
+        author: { id: r.author_id, username: author?.username ?? "", handle: author ? makeHandle(author.username, author.discriminator) : "", displayName: author?.display_name ?? "" },
         replyCount: r.reply_count,
         isPinned: r.is_pinned === 1,
         isLocked: r.is_locked === 1,
@@ -271,7 +274,7 @@ export function createDiscussionService(db: DbProvider, boardService: BoardServi
           title: r.title,
           preview: preview(r.body_md),
           board: { id: r.board_id, slug: board?.slug ?? "", name: board?.name ?? "" },
-          author: { id: r.author_id, username: author?.username ?? "", displayName: author?.display_name ?? "" },
+          author: { id: r.author_id, username: author?.username ?? "", handle: author ? makeHandle(author.username, author.discriminator) : "", displayName: author?.display_name ?? "" },
           replyCount: r.reply_count,
           isPinned: r.is_pinned === 1,
           isLocked: r.is_locked === 1,
@@ -423,7 +426,7 @@ export function createDiscussionService(db: DbProvider, boardService: BoardServi
           id: r.id,
           discussionId,
           parentReplyId: r.parent_reply_id,
-          author: { id: r.author_id, username: author?.username ?? "", displayName: author?.display_name ?? "" },
+          author: { id: r.author_id, username: author?.username ?? "", handle: author ? makeHandle(author.username, author.discriminator) : "", displayName: author?.display_name ?? "" },
           bodyMarkdown: r.deleted_at ? "" : r.body_md,
           bodyHtml: r.deleted_at ? null : r.body_html,
           isDeleted: r.deleted_at !== null,
@@ -632,7 +635,7 @@ export function createDiscussionService(db: DbProvider, boardService: BoardServi
           id: r.id,
           discussionId: r.discussion_id,
           parentReplyId: r.parent_reply_id,
-          author: { id: r.author_id, username: author?.username ?? "", displayName: author?.display_name ?? "" },
+          author: { id: r.author_id, username: author?.username ?? "", handle: author ? makeHandle(author.username, author.discriminator) : "", displayName: author?.display_name ?? "" },
           bodyMarkdown: r.body_md,
           bodyHtml: r.body_html,
           isDeleted: false,

@@ -2,13 +2,14 @@ import { and, count, desc, eq, inArray, isNull, like, or } from "drizzle-orm";
 import type { DbProvider } from "../infrastructure/db/client.js";
 import { boardMembers, boards, discussions, users } from "../infrastructure/db/schema.js";
 import type { Actor } from "../authz/can.js";
+import { makeHandle } from "../users/service.js";
 
 export interface SearchResultItem {
   id: number;
   title: string;
   preview: string;
   board: { id: number; slug: string; name: string };
-  author: { id: number; username: string; displayName: string };
+  author: { id: number; username: string; handle: string; displayName: string };
   replyCount: number;
   isPinned: boolean;
   isLocked: boolean;
@@ -106,7 +107,7 @@ export function createSearchService(db: DbProvider): SearchService {
           title: r.title,
           preview: preview(r.body_md),
           board: { id: r.board_id, slug: board?.slug ?? "", name: board?.name ?? "" },
-          author: { id: r.author_id, username: author?.username ?? "", displayName: author?.display_name ?? "" },
+          author: { id: r.author_id, username: author?.username ?? "", handle: author ? makeHandle(author.username, author.discriminator) : "", displayName: author?.display_name ?? "" },
           replyCount: r.reply_count,
           isPinned: r.is_pinned === 1,
           isLocked: r.is_locked === 1,

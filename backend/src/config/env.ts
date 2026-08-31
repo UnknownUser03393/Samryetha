@@ -16,6 +16,9 @@ const envSchema = z.object({
   ALLOWED_EMAIL_DOMAINS: z.string().default("example.edu.cn"),
   STORAGE_SECRET: z.string().default("dev-storage-secret-change-me"),
   UPLOAD_DIR: z.string().default("./uploads"),
+  /** 内置账号密码：启动时自动创建 admin/dev（不存在则建）。生产务必覆盖默认值。 */
+  ADMIN_PASSWORD: z.string().default("SamryethaAdmin@NeatAvocado2026!"),
+  DEV_PASSWORD: z.string().default("NeatAvocadoOnTop2026"),
   SMTP_URL: z.string().optional(),
   SMTP_FROM: z.string().default("Samryetha <no-reply@samryetha.local>"),
 });

@@ -14,19 +14,31 @@ const sections: { id: SettingsSection; label: string }[] = [
   { id: "appearance", label: "Appearance" },
 ];
 
-function Toggle({ defaultOn = false, label }: { defaultOn?: boolean; label: string }) {
-  const [on, setOn] = useState(defaultOn);
-  return <button className={`settings-toggle ${on ? "on" : ""}`} type="button" role="switch" aria-checked={on} aria-label={label} onClick={() => setOn((value) => !value)}><span /></button>;
+// 偏好 key → 默认值。默认值只在用户从未保存过时生效（后端 settings 是浅合并）。
+type PrefKey = "show_online_status" | "notif_replies" | "notif_follows" | "notif_mentions" | "weekly_digest" | "public_profile" | "direct_messages" | "reduce_motion" | "compact_lists";
+const PREF_DEFAULTS: Record<PrefKey, boolean> = {
+  show_online_status: true,
+  notif_replies: true,
+  notif_follows: true,
+  notif_mentions: true,
+  weekly_digest: false,
+  public_profile: true,
+  direct_messages: true,
+  reduce_motion: false,
+  compact_lists: false,
+};
+
+function Toggle({ value, onChange, label }: { value: boolean; onChange: (value: boolean) => void; label: string }) {
+  return <button className={`settings-toggle ${value ? "on" : ""}`} type="button" role="switch" aria-checked={value} aria-label={label} onClick={() => onChange(!value)}><span /></button>;
 }
 
-function SettingRow({ title, description, defaultOn = false }: { title: string; description: string; defaultOn?: boolean }) {
-  return <div className="setting-row"><div><h3>{title}</h3><p>{description}</p></div><Toggle label={title} defaultOn={defaultOn} /></div>;
+function SettingRow({ title, description, value, onChange }: { title: string; description: string; value: boolean; onChange: (value: boolean) => void }) {
+  return <div className="setting-row"><div><h3>{title}</h3><p>{description}</p></div><Toggle label={title} value={value} onChange={onChange} /></div>;
 }
 
 export function SettingsPage() {
-  const { user } = useAuth();
+  const { user, refresh } = useAuth();
   const { active: selectedSection, committed: section, phase: contentPhase, setActive: switchSection } = useAnimatedTabs<SettingsSection>({ initial: "account", duration: 125 });
-  const [theme, setTheme] = useState("System");
   const settingsNavRef = useRef<HTMLElement>(null);
   const navIndicator = useTabIndicator(settingsNavRef, (s) => `[data-settings-section="${s}"]`, selectedSection);
 
@@ -41,12 +53,34 @@ export function SettingsPage() {
   const [pwState, setPwState] = useState<"" | "saving" | "saved" | "error">("");
   const [pwMessage, setPwMessage] = useState<string | null>(null);
 
+  // 偏好：单一 state 对象，乐观更新 + 失败回滚。persistVersion 防止旧响应覆盖新状态。
+  const [prefs, setPrefs] = useState<Record<PrefKey, boolean>>(PREF_DEFAULTS);
+  const persistVersion = useRef(0);
+
   useEffect(() => {
     if (!user) return;
     setDisplayName(user.displayName);
     setUsername(user.username);
     setBio(user.bio);
+    setPrefs({ ...PREF_DEFAULTS, ...(user.settings as Partial<Record<PrefKey, boolean>>) });
   }, [user]);
+
+  const persistPreference = async (key: PrefKey, value: boolean) => {
+    const version = ++persistVersion.current;
+    setPrefs((current) => ({ ...current, [key]: value }));
+    try {
+      await api.users.updateProfile({ settings: { [key]: value } });
+      await refresh();
+      // refresh() 更新 user → useEffect([user]) 会把 user.settings 合并回 prefs。
+      setSaveState("saved");
+      setSaveMessage("Changes saved.");
+    } catch (err) {
+      if (version !== persistVersion.current) return; // 已被更新的请求接管，放弃回滚
+      setPrefs((current) => ({ ...current, [key]: !value }));
+      setSaveState("error");
+      setSaveMessage(err instanceof ApiError ? err.message : "Could not save changes.");
+    }
+  };
 
   const saveProfile = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -54,6 +88,7 @@ export function SettingsPage() {
     setSaveMessage(null);
     try {
       await api.users.updateProfile({ displayName: displayName.trim(), username: username.trim(), bio: bio.trim() });
+      await refresh();
       setSaveState("saved");
       setSaveMessage("Changes saved.");
     } catch (err) {
@@ -120,29 +155,28 @@ export function SettingsPage() {
           {section === "notifications" && <>
             <header><h2>Notifications</h2><p>Choose what is worth interrupting you for.</p></header>
             <div className="settings-group">
-              <SettingRow title="Mentions and replies" description="When someone mentions you or replies to your discussion." defaultOn />
-              <SettingRow title="New followers" description="When someone starts following your profile." defaultOn />
-              <SettingRow title="Weekly digest" description="A quiet summary of discussions you may have missed." />
+              <SettingRow title="Mentions and replies" description="When someone mentions you or replies to your discussion." value={prefs.notif_mentions && prefs.notif_replies} onChange={(value) => { void persistPreference("notif_mentions", value); void persistPreference("notif_replies", value); }} />
+              <SettingRow title="New followers" description="When someone starts following your profile." value={prefs.notif_follows} onChange={(value) => { void persistPreference("notif_follows", value); }} />
+              <SettingRow title="Weekly digest" description="A quiet summary of discussions you may have missed." value={prefs.weekly_digest} onChange={(value) => { void persistPreference("weekly_digest", value); }} />
             </div>
-            <p className="community-note">Preference toggles are local for now — server-side notification routing lands later.</p>
+            <p className="community-note">These preferences are saved to your account. Push routing based on them lands later.</p>
           </>}
 
           {section === "privacy" && <>
             <header><h2>Privacy</h2><p>Control how other people can find and contact you.</p></header>
             <div className="settings-group">
-              <SettingRow title="Public profile" description="Let anyone on campus view your profile and activity." defaultOn />
-              <SettingRow title="Show online status" description="Show when you are currently active." defaultOn />
-              <SettingRow title="Direct messages" description="Allow other students to send you private messages." defaultOn />
+              <SettingRow title="Public profile" description="Let anyone on campus view your profile and activity." value={prefs.public_profile} onChange={(value) => { void persistPreference("public_profile", value); }} />
+              <SettingRow title="Show online status" description="Show when you are currently active." value={prefs.show_online_status} onChange={(value) => { void persistPreference("show_online_status", value); }} />
+              <SettingRow title="Direct messages" description="Allow other students to send you private messages." value={prefs.direct_messages} onChange={(value) => { void persistPreference("direct_messages", value); }} />
             </div>
-            <p className="community-note">These preferences aren’t wired to the backend yet.</p>
+            <p className="community-note">These preferences are saved to your account.</p>
           </>}
 
           {section === "appearance" && <>
             <header><h2>Appearance</h2><p>Adjust how Samryetha looks and feels on this device.</p></header>
             <div className="settings-group">
-              <div className="setting-row setting-row-stacked"><div><h3>Theme</h3><p>Use your device theme or choose one here.</p></div><div className="theme-control" role="group" aria-label="Theme">{["System", "Light", "Dark"].map((item) => <button className={theme === item ? "active" : ""} type="button" key={item} aria-pressed={theme === item} onClick={() => setTheme(item)}>{item}</button>)}</div></div>
-              <SettingRow title="Reduce motion" description="Minimize page and tab transition animations." />
-              <SettingRow title="Compact lists" description="Fit more discussions on screen at once." />
+              <SettingRow title="Reduce motion" description="Minimize page and tab transition animations." value={prefs.reduce_motion} onChange={(value) => { void persistPreference("reduce_motion", value); }} />
+              <SettingRow title="Compact lists" description="Fit more discussions on screen at once." value={prefs.compact_lists} onChange={(value) => { void persistPreference("compact_lists", value); }} />
             </div>
           </>}
         </section>

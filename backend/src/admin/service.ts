@@ -15,10 +15,12 @@ import {
   type UserStatus,
 } from "../infrastructure/db/schema.js";
 import type { PresenceStore } from "../infrastructure/presence/types.js";
+import { makeHandle } from "../users/service.js";
 
 export type AdminUserDTO = {
   id: number;
   username: string;
+  handle: string;
   displayName: string;
   email: string;
   role: UserRole;
@@ -48,7 +50,7 @@ export type DeletedDiscussion = {
   boardSlug: string;
   title: string;
   preview: string;
-  deletedBy: { id: number; username: string; displayName: string } | null;
+  deletedBy: { id: number; username: string; handle: string; displayName: string } | null;
   deletedAt: number;
   reason: string | null;
 };
@@ -58,7 +60,7 @@ export type DeletedReply = {
   discussionId: number;
   discussionTitle: string;
   preview: string;
-  deletedBy: { id: number; username: string; displayName: string } | null;
+  deletedBy: { id: number; username: string; handle: string; displayName: string } | null;
   deletedAt: number;
   reason: string | null;
 };
@@ -117,6 +119,7 @@ function toAdminUserDTO(
   return {
     id: row.id,
     username: row.username,
+    handle: makeHandle(row.username, row.discriminator),
     displayName: row.display_name,
     email: row.email,
     role: row.role,
@@ -129,10 +132,10 @@ function toAdminUserDTO(
   };
 }
 
-type AuthorRef = { id: number; username: string; displayName: string };
+type AuthorRef = { id: number; username: string; handle: string; displayName: string };
 
-function toAuthor(row: { id: number; username: string; display_name: string }): AuthorRef {
-  return { id: row.id, username: row.username, displayName: row.display_name };
+function toAuthor(row: { id: number; username: string; display_name: string; discriminator: number | null }): AuthorRef {
+  return { id: row.id, username: row.username, handle: makeHandle(row.username, row.discriminator), displayName: row.display_name };
 }
 
 export function createAdminService(db: DbProvider, c: AuthzCtx, opts: { presence: PresenceStore }): AdminService {

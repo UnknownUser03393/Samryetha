@@ -12,6 +12,7 @@ import { buildApp } from "../src/app/server.js";
 import { outboxEvents, notifications, users, boards, boardMembers, discussions, moderationActions, bans, reports } from "../src/infrastructure/db/schema.js";
 import { can, Abilities, type Actor, type AuthzCtx } from "../src/authz/can.js";
 import { createDiscussionService } from "../src/discussions/service.js";
+import { FAKE_EMAIL_DOMAIN } from "../src/auth/service.js";
 
 const EMAIL_DOMAIN = "example.edu.cn";
 const PASSWORD = "TestPass123!";
@@ -47,14 +48,13 @@ async function waitForOutbox(type: string, timeoutMs = 5000): Promise<Record<str
 }
 
 async function registerUser(username: string): Promise<string> {
-  const email = `${username}@${EMAIL_DOMAIN}`;
   // 幂等：已注册则直接登录，避免跨用例重复注册冲突
   const existing = await container.db.db.select().from(users).where(eq(users.username, username)).get();
   if (existing) {
     const login = await app.inject({
       method: "POST",
       url: "/api/auth/login",
-      payload: { email, password: PASSWORD },
+      payload: { username, password: PASSWORD },
     });
     expect(login.statusCode).toBe(200);
     return cookieHeader(login);
@@ -62,18 +62,21 @@ async function registerUser(username: string): Promise<string> {
   const reg = await app.inject({
     method: "POST",
     url: "/api/auth/register",
-    payload: { email, username, displayName: username.toUpperCase(), password: PASSWORD },
+    payload: { username, password: PASSWORD },
   });
   expect(reg.statusCode).toBe(201);
-  const ev = await waitForOutbox("user.registered");
-  const code = ev.code as string;
-  const ver = await app.inject({
+  // 模拟管理员审批：pending → active（真实流程走 /api/admin/users/:id/verify）
+  await container.db.db
+    .update(users)
+    .set({ status: "active", email_verified_at: new Date(), updated_at: new Date() })
+    .where(eq(users.username, username));
+  const login = await app.inject({
     method: "POST",
-    url: "/api/auth/verify-email",
-    payload: { email, code },
+    url: "/api/auth/login",
+    payload: { username, password: PASSWORD },
   });
-  expect(ver.statusCode).toBe(200);
-  return cookieHeader(ver);
+  expect(login.statusCode).toBe(200);
+  return cookieHeader(login);
 }
 
 function actor(role: string, status = "active", id = 999): Actor {
@@ -109,43 +112,47 @@ describe("M0 健康检查", () => {
 });
 
 describe("M1 身份认证", () => {
-  it("非 allowlist 域名注册被拒", async () => {
-    const res = await app.inject({
-      method: "POST",
-      url: "/api/auth/register",
-      payload: { email: "alice@evil.com", username: "alice", displayName: "Alice", password: PASSWORD },
-    });
-    expect(res.statusCode).toBe(422);
-    expect(JSON.parse(res.body).error.code).toBe("VALIDATION_ERROR");
-  });
+  it("注册→待审核→管理员通过→登录→me→登出 全链路", async () => {
+    // 造一个管理员用于审批
+    const adminReg = await app.inject({ method: "POST", url: "/api/auth/register", payload: { username: "rootadmin", password: PASSWORD } });
+    expect(adminReg.statusCode).toBe(201);
+    await container.db.db
+      .update(users)
+      .set({ role: "admin", status: "active", email_verified_at: new Date(), updated_at: new Date() })
+      .where(eq(users.username, "rootadmin"));
+    const adminLogin = await app.inject({ method: "POST", url: "/api/auth/login", payload: { username: "rootadmin", password: PASSWORD } });
+    expect(adminLogin.statusCode).toBe(200);
+    const adminCookie = cookieHeader(adminLogin);
 
-  it("注册→验证码→激活→登录→me→登出 全链路", async () => {
-    const email = `bob@${EMAIL_DOMAIN}`;
-    const reg = await app.inject({
-      method: "POST",
-      url: "/api/auth/register",
-      payload: { email, username: "bob", displayName: "Bob", password: PASSWORD },
-    });
+    // 注册新用户 → pending，且分配了 #号
+    const reg = await app.inject({ method: "POST", url: "/api/auth/register", payload: { username: "bob", password: PASSWORD } });
     expect(reg.statusCode).toBe(201);
+    const row = await container.db.db.select().from(users).where(eq(users.username, "bob")).get();
+    expect(row!.status).toBe("pending");
+    expect(row!.discriminator).toBeGreaterThanOrEqual(1000);
+    expect(row!.email).toBe(`bob@${FAKE_EMAIL_DOMAIN}`);
 
-    // 验证码邮件经 outbox→console，从 payload 取明文 code
-    const ev = await waitForOutbox("user.registered");
-    const badVer = await app.inject({
-      method: "POST", url: "/api/auth/verify-email",
-      payload: { email, code: "000000" },
-    });
-    expect(badVer.statusCode).toBe(400);
+    // pending 用户登录被拒
+    const pendingLogin = await app.inject({ method: "POST", url: "/api/auth/login", payload: { username: "bob", password: PASSWORD } });
+    expect(pendingLogin.statusCode).toBe(403);
 
-    const ver = await app.inject({
-      method: "POST", url: "/api/auth/verify-email",
-      payload: { email, code: ev.code },
-    });
-    expect(ver.statusCode).toBe(200);
-    const cookie = cookieHeader(ver);
+    // 管理员通过审批
+    const approve = await app.inject({ method: "POST", url: `/api/admin/users/${row!.id}/verify`, headers: { cookie: adminCookie } });
+    expect(approve.statusCode).toBe(200);
+    expect(JSON.parse(approve.body).status).toBe("active");
 
+    // 重复通过 → 409
+    const dup = await app.inject({ method: "POST", url: `/api/admin/users/${row!.id}/verify`, headers: { cookie: adminCookie } });
+    expect(dup.statusCode).toBe(409);
+
+    // 登录 → me → 登出；handle 形如 bob#NNNN
+    const login = await app.inject({ method: "POST", url: "/api/auth/login", payload: { username: "bob", password: PASSWORD } });
+    expect(login.statusCode).toBe(200);
+    const cookie = cookieHeader(login);
     const me = await app.inject({ method: "GET", url: "/api/auth/me", headers: { cookie } });
     expect(me.statusCode).toBe(200);
     expect(JSON.parse(me.body).user.status).toBe("active");
+    expect(JSON.parse(me.body).user.handle).toMatch(/^bob#\d{4}$/);
 
     const logout = await app.inject({ method: "POST", url: "/api/auth/logout", headers: { cookie } });
     expect(logout.statusCode).toBe(204);
@@ -513,11 +520,11 @@ describe("M7 管理后台", () => {
     const kicked = await app.inject({ method: "GET", url: "/api/auth/me", headers: { cookie: target } });
     expect(kicked.statusCode).toBe(401);
 
-    // 重新登录被拒（login 对非 active 抛 emailNotVerified 403）
+    // 重新登录被拒（login 对非 active 抛 403）
     const relogin = await app.inject({
       method: "POST",
       url: "/api/auth/login",
-      payload: { email: "statm7@example.edu.cn", password: PASSWORD },
+      payload: { username: "statm7", password: PASSWORD },
     });
     expect(relogin.statusCode).toBe(403);
 
@@ -564,11 +571,11 @@ describe("M7 管理后台", () => {
 
   it("verify：pending 用户手动验证；重复验证 409", async () => {
     const admin = await adminCookie("adminm7e");
-    // 注册但不验证 → pending
+    // 注册 → pending
     const reg = await app.inject({
       method: "POST",
       url: "/api/auth/register",
-      payload: { email: "pendm7@example.edu.cn", username: "pendm7", displayName: "Pend", password: PASSWORD },
+      payload: { username: "pendm7", password: PASSWORD },
     });
     expect(reg.statusCode).toBe(201);
     const pendRow = await container.db.db.select().from(users).where(eq(users.username, "pendm7")).get();
@@ -691,5 +698,134 @@ describe("M7 管理后台", () => {
     const found = items.find((r: { target?: { id: number } }) => r.target?.id === discussionId);
     expect(found).toBeTruthy();
     expect(found.target.title).toBe("Report target thread");
+  });
+});
+
+describe("M8 反馈模块", () => {
+  async function adminCookie(): Promise<string> {
+    const c = await registerUser("fadmin");
+    await container.db.db.update(users).set({ role: "admin" }).where(eq(users.username, "fadmin"));
+    return c;
+  }
+
+  async function userIdOf(username: string): Promise<number> {
+    const row = await container.db.db.select().from(users).where(eq(users.username, username)).get();
+    return row!.id;
+  }
+
+  it("管理员建项目+派成员→成员提交→程序员标完成→普通成员被拒→非成员不可见", async () => {
+    const admin = await adminCookie();
+    const member = await registerUser("fmember");
+    const programmer = await registerUser("fprog");
+    const outsider = await registerUser("foutsider");
+
+    const proj = await app.inject({
+      method: "POST",
+      url: "/api/feedback/projects",
+      headers: { cookie: admin },
+      payload: { name: "Test Project", description: "desc" },
+    });
+    expect(proj.statusCode).toBe(201);
+    const projectId = JSON.parse(proj.body).id as number;
+
+    const membersRes = await app.inject({
+      method: "PUT",
+      url: `/api/feedback/projects/${projectId}/members`,
+      headers: { cookie: admin },
+      payload: {
+        members: [
+          { userId: await userIdOf("fmember"), isProgrammer: false },
+          { userId: await userIdOf("fprog"), isProgrammer: true },
+        ],
+      },
+    });
+    expect(membersRes.statusCode).toBe(200);
+
+    // 非成员看不到项目
+    const outsView = await app.inject({ method: "GET", url: `/api/feedback?projectId=${projectId}`, headers: { cookie: outsider } });
+    expect(outsView.statusCode).toBe(403);
+
+    // 普通成员提交，seq 从 1 开始
+    const create = await app.inject({
+      method: "POST",
+      url: "/api/feedback",
+      headers: { cookie: member },
+      payload: { projectId, title: "bug report", detail: "detail", type: "bug", urgency: "urgent" },
+    });
+    expect(create.statusCode).toBe(201);
+    const item = JSON.parse(create.body);
+    expect(item.seq).toBe(1);
+
+    // 普通成员能看到 canManage=false
+    const view = await app.inject({ method: "GET", url: `/api/feedback?projectId=${projectId}`, headers: { cookie: member } });
+    expect(view.statusCode).toBe(200);
+    expect(JSON.parse(view.body).canManage).toBe(false);
+
+    // 程序员标完成 → closedAt 落时间
+    const done = await app.inject({
+      method: "POST",
+      url: `/api/feedback/${item.id}/status`,
+      headers: { cookie: programmer },
+      payload: { status: "done" },
+    });
+    expect(done.statusCode).toBe(200);
+    const doneBody = JSON.parse(done.body);
+    expect(doneBody.status).toBe("done");
+    expect(doneBody.closedAt).not.toBeNull();
+
+    // 普通成员标完成被拒
+    const denied = await app.inject({
+      method: "POST",
+      url: `/api/feedback/${item.id}/status`,
+      headers: { cookie: member },
+      payload: { status: "done" },
+    });
+    expect(denied.statusCode).toBe(403);
+
+    // 作者本人可删除
+    const del = await app.inject({ method: "DELETE", url: `/api/feedback/${item.id}`, headers: { cookie: member } });
+    expect(del.statusCode).toBe(200);
+    const after = await app.inject({ method: "GET", url: `/api/feedback?projectId=${projectId}`, headers: { cookie: member } });
+    expect(JSON.parse(after.body).items).toHaveLength(0);
+  });
+
+  it("Agent 密钥读写权限与备份设置", async () => {
+    const admin = await adminCookie();
+
+    const keyRes = await app.inject({
+      method: "POST",
+      url: "/api/admin/feedback/keys",
+      headers: { cookie: admin },
+      payload: { name: "agent", role: "write", projectIds: [] },
+    });
+    expect(keyRes.statusCode).toBe(201);
+    const key = JSON.parse(keyRes.body).key as string;
+    expect(key.startsWith("fb_")).toBe(true);
+
+    // 免 key 索引
+    const index = await app.inject({ method: "GET", url: "/api/agent/v1" });
+    expect(index.statusCode).toBe(200);
+    expect(JSON.parse(index.body).name).toContain("Feedback");
+
+    // 带 key 查任务
+    const tasks = await app.inject({ method: "GET", url: "/api/agent/v1/tasks", headers: { "x-api-key": key } });
+    expect(tasks.statusCode).toBe(200);
+
+    // 错误 key 被拒
+    const bad = await app.inject({ method: "GET", url: "/api/agent/v1/tasks", headers: { "x-api-key": "fb_wrong" } });
+    expect(bad.statusCode).toBe(401);
+
+    // 备份：内存库不可用，create 应优雅拒绝；list/settings 可用
+    const backup = await app.inject({ method: "POST", url: "/api/admin/feedback/backups/create", headers: { cookie: admin } });
+    expect(backup.statusCode).toBe(400);
+    const backups = await app.inject({ method: "GET", url: "/api/admin/feedback/backups", headers: { cookie: admin } });
+    expect(backups.statusCode).toBe(200);
+    const settings = await app.inject({
+      method: "PUT",
+      url: "/api/admin/feedback/backups/settings",
+      headers: { cookie: admin },
+      payload: { backupCron: "", backupKeep: 5 },
+    });
+    expect(settings.statusCode).toBe(200);
   });
 });

@@ -44,6 +44,9 @@ importers:
       marked:
         specifier: ^18.0.11
         version: 18.0.11
+      node-cron:
+        specifier: ^4.6.0
+        version: 4.6.0
       sanitize-html:
         specifier: ^2.17.7
         version: 2.17.7
@@ -1327,6 +1330,10 @@ packages:
     resolution: {integrity: sha512-VijLXbi3UACN69I0JVXJsX4tjACjNoQDgv2gTF6sx2wWEi8tkSg2eX8p5gSIFi8z2+DL3oHmY6OyKce38SDolg==}
     engines: {node: ^18 || ^20 || >= 21}
 
+  node-cron@4.6.0:
+    resolution: {integrity: sha512-Si/bzYiKRHOB8/a99T2+SDGN582ONDMSTlJr5oCkT6GtnqPjZ2s10eoQRYkW9ZHwjVxONL+W8Fb+qR0AHMQsdg==}
+    engines: {node: '>=20'}
+
   obug@2.1.4:
     resolution: {integrity: sha512-4a+OsYv9UktOJKE+l1A4OufDgdRF9PifWj+tJnHURo/P+WOxpG4GzUFL9qCalmWauao6ogiG+QvnCovwPoyAWA==}
     engines: {node: '>=12.20.0'}
@@ -2543,6 +2550,8 @@ snapshots:
 
   node-addon-api@8.9.2:
     optional: true
+
+  node-cron@4.6.0: {}
 
   obug@2.1.4: {}
 

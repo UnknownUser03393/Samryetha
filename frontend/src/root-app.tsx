@@ -7,16 +7,29 @@ import { SettingsPage } from "./settings-page";
 import { LoginPage, type AuthMode } from "./login-page";
 import { ThreadPage } from "./thread-page";
 import { AdminPage } from "./admin-page";
+import { FeedbackPage } from "./feedback-page";
 import { AuthProvider } from "./lib/auth";
 
 type TransitionDocument = Document & {
-  startViewTransition?: (update: () => void) => unknown;
+  startViewTransition?: (update: () => void) => { finished: Promise<void> };
 };
 
-function runTransition(update: () => void) {
+type TransitionStyle = "thread-enter" | "thread-return";
+
+function runTransition(update: () => void, style?: TransitionStyle) {
   const transitionDocument = document as TransitionDocument;
-  if (transitionDocument.startViewTransition) transitionDocument.startViewTransition(update);
-  else update();
+  if (!transitionDocument.startViewTransition) {
+    update();
+    return;
+  }
+
+  if (style) document.documentElement.dataset.transition = style;
+  const transition = transitionDocument.startViewTransition(update);
+  if (style) {
+    void transition.finished.finally(() => {
+      delete document.documentElement.dataset.transition;
+    });
+  }
 }
 
 const DETAIL_PATTERN = /^\/d\/(\d+)$/;
@@ -24,23 +37,31 @@ const DETAIL_PATTERN = /^\/d\/(\d+)$/;
 function RootAppInner({ pathname }: { pathname: string }) {
   const [activePath, setActivePath] = useState(pathname);
   const [discussionView, setDiscussionView] = useState<View>("latest");
+  const [transitionTitle, setTransitionTitle] = useState<{ id: number; title: string } | null>(null);
   const [toastVisible, setToastVisible] = useState(false);
   const toastTimer = useRef<number | undefined>(undefined);
 
   useEffect(() => {
-    const changePage = (nextPath: string, nextUrl?: string, nextView?: View) => {
+    const changePage = (
+      nextPath: string,
+      nextUrl?: string,
+      nextView?: View,
+      style?: TransitionStyle,
+      sharedTitle?: { id: number; title: string } | null,
+    ) => {
       const update = () => {
         flushSync(() => {
           if (nextView) setDiscussionView(nextView);
+          setTransitionTitle(sharedTitle ?? null);
           setActivePath(nextPath);
         });
         if (nextUrl) window.history.pushState({}, "", nextUrl);
         window.scrollTo({ top: 0 });
       };
 
-      const authPaths = ["/login", "/register", "/forgot-password"];
+      const authPaths = ["/login", "/register"];
       if (authPaths.includes(activePath) && authPaths.includes(nextPath)) update();
-      else runTransition(update);
+      else runTransition(update, style);
     };
 
     const navigate = (event: MouseEvent) => {
@@ -57,11 +78,23 @@ function RootAppInner({ pathname }: { pathname: string }) {
       // （移动端汉堡菜单在首页切 Latest/Followed/Boards 就是这个场景）。
       if (destination.pathname === activePath && !nextView) return;
       const isDetail = DETAIL_PATTERN.test(destination.pathname);
-      const isApp = destination.pathname === "/" || destination.pathname === "/post" || destination.pathname === "/profile" || destination.pathname === "/settings" || destination.pathname === "/admin";
-      if (!isDetail && !isApp && !["/login", "/register", "/forgot-password"].includes(destination.pathname)) return;
+      const isApp = destination.pathname === "/" || destination.pathname === "/post" || destination.pathname === "/profile" || destination.pathname === "/settings" || destination.pathname === "/admin" || destination.pathname === "/feedback";
+      if (!isDetail && !isApp && !["/login", "/register"].includes(destination.pathname)) return;
       event.preventDefault();
       // 保留 search（如 /?board=study），供 DiscussionApp 挂载时读板块初始化筛选。
-      changePage(destination.pathname, destination.pathname + destination.search, nextView);
+      const currentIsDetail = DETAIL_PATTERN.test(activePath);
+      const style = isDetail && !currentIsDetail
+        ? "thread-enter"
+        : currentIsDetail && destination.pathname === "/"
+          ? "thread-return"
+          : undefined;
+      const detailId = isDetail ? Number(destination.pathname.match(DETAIL_PATTERN)?.[1]) : null;
+      const sourceTitle = isDetail ? anchor.querySelector<HTMLElement>(".thread-title") : null;
+      const sharedTitle = detailId && sourceTitle?.textContent
+        ? { id: detailId, title: sourceTitle.textContent }
+        : null;
+      if (sharedTitle) sourceTitle!.style.viewTransitionName = "thread-title";
+      changePage(destination.pathname, destination.pathname + destination.search, nextView, style, sharedTitle);
     };
 
     const restoreHistory = () => changePage(window.location.pathname);
@@ -101,15 +134,19 @@ function RootAppInner({ pathname }: { pathname: string }) {
     toastTimer.current = window.setTimeout(() => setToastVisible(false), 2000);
   };
 
-  const authModes: Partial<Record<string, AuthMode>> = { "/login": "login", "/register": "register", "/forgot-password": "forgot" };
+  const authModes: Partial<Record<string, AuthMode>> = { "/login": "login", "/register": "register" };
   const authMode = authModes[activePath];
   if (authMode) return <LoginPage mode={authMode} onSignedIn={signIn} />;
   const detailMatch = activePath.match(DETAIL_PATTERN);
-  if (detailMatch) return <ThreadPage id={Number(detailMatch[1])} />;
+  if (detailMatch) {
+    const id = Number(detailMatch[1]);
+    return <ThreadPage id={id} initialTitle={transitionTitle?.id === id ? transitionTitle.title : undefined} />;
+  }
   if (activePath === "/post") return <PostPage onPublished={(id) => { goToThread(id); showToast(); }} />;
   if (activePath === "/profile") return <ProfilePage />;
   if (activePath === "/settings") return <SettingsPage />;
   if (activePath === "/admin") return <AdminPage />;
+  if (activePath === "/feedback") return <FeedbackPage />;
   return (
     <>
       <DiscussionApp initialView={discussionView} onViewChange={setDiscussionView} />

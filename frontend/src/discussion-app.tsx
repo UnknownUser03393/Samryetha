@@ -166,6 +166,7 @@ export function DiscussionApp({ initialView = "latest", onViewChange }: { initia
             <button key={item} data-view={item} className={`nav-link ${viewTabs.active === item ? "active" : ""}`} type="button" aria-current={viewTabs.active === item ? "page" : undefined} onClick={() => viewTabs.setActive(item)}>{viewLabels[item]}</button>
           ))}
           <span className={`nav-indicator ${navIndicator.ready ? "ready" : ""}`} style={{ width: navIndicator.width, transform: `translateX(${navIndicator.x}px)` }} aria-hidden="true" />
+          <a className="nav-link" href="/feedback">Feedback</a>
         </nav>
       }
       search={

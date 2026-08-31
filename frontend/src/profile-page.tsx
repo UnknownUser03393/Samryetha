@@ -100,7 +100,7 @@ export function ProfilePage() {
   };
 
   const displayName = profile?.displayName ?? (user?.displayName ?? "Loading…");
-  const handle = targetUsername;
+  const handle = profile?.handle ?? targetUsername;
   const bio = profile?.bio ?? "";
 
   return (

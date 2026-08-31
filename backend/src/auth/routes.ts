@@ -3,27 +3,15 @@ import type { FastifyInstance, FastifyRequest } from "fastify";
 import type { Container } from "../app/container.js";
 import { requireUser } from "../app/auth-hook.js";
 import { SESSION_COOKIE } from "./session.js";
-import { passwordResetEmail, verificationEmail } from "../infrastructure/email/templates.js";
 
 const registerBody = z.object({
-  email: z.string().trim().email(),
   username: z.string().trim().min(3).max(30).regex(/^[a-z0-9_]+$/i, "Only letters, numbers, underscore"),
-  displayName: z.string().trim().min(1).max(50),
   password: z.string().min(8).max(200),
 });
 
-const emailOnly = z.object({ email: z.string().trim().email() });
-
-const verifyBody = z.object({ email: z.string().trim().email(), code: z.string().trim().regex(/^\d{6}$/) });
-
 const loginBody = z.object({
-  email: z.string().trim().email(),
+  username: z.string().trim().min(1).max(30),
   password: z.string().min(1),
-});
-
-const resetBody = z.object({
-  token: z.string().min(10),
-  newPassword: z.string().min(8).max(200),
 });
 
 const changePasswordBody = z.object({
@@ -44,51 +32,17 @@ function cookieOptions(container: Container) {
   };
 }
 
-/** 注册 auth 路由 + outbox 邮件 handler。 */
+/** 注册 auth 路由。内测期：无邮箱，注册即提交申请（pending），管理员审核通过后登录。 */
 export function registerAuthModule(app: FastifyInstance, container: Container): void {
   const { auth } = container;
 
-  // --- outbox side effects ---
-  container.dispatcher.on("user.registered", async ({ payload }) => {
-    const { email, displayName, code } = payload as { email: string; displayName: string; code: string };
-    const mail = verificationEmail({ code, displayName });
-    await container.mailer.send({ to: email, ...mail });
-  });
-  container.dispatcher.on("user.password_reset_requested", async ({ payload }) => {
-    const { email, displayName, link } = payload as { email: string; displayName: string; link: string };
-    const mail = passwordResetEmail({ link, displayName });
-    await container.mailer.send({ to: email, ...mail });
-  });
-
-  // --- routes ---
   app.route({
     method: "POST",
     url: "/api/auth/register",
     schema: { body: registerBody },
     handler: async (request: BodyRequest<typeof registerBody>, reply) => {
       const { userId } = await auth.register(request.body);
-      return reply.code(201).send({ userId, message: "verification_sent" });
-    },
-  });
-
-  app.route({
-    method: "POST",
-    url: "/api/auth/verify-email",
-    schema: { body: verifyBody },
-    handler: async (request: BodyRequest<typeof verifyBody>, reply) => {
-      const result = await auth.verifyEmail(request.body.email, request.body.code);
-      reply.setCookie(SESSION_COOKIE, result.token, cookieOptions(container));
-      return reply.send({ ok: true, user: result.user });
-    },
-  });
-
-  app.route({
-    method: "POST",
-    url: "/api/auth/resend-verification",
-    schema: { body: emailOnly },
-    handler: async (request: BodyRequest<typeof emailOnly>) => {
-      await auth.resendVerification(request.body.email);
-      return { ok: true };
+      return reply.code(201).send({ userId, message: "pending" });
     },
   });
 
@@ -97,7 +51,7 @@ export function registerAuthModule(app: FastifyInstance, container: Container): 
     url: "/api/auth/login",
     schema: { body: loginBody },
     handler: async (request: BodyRequest<typeof loginBody>, reply) => {
-      const result = await auth.login(request.body.email, request.body.password, {
+      const result = await auth.login(request.body.username, request.body.password, {
         ip: request.ip,
         userAgent: request.headers["user-agent"],
       });
@@ -125,26 +79,6 @@ export function registerAuthModule(app: FastifyInstance, container: Container): 
       const user = await container.userService.getById(session.id);
       if (!user) throw new Error("Session user vanished");
       return { user: container.userService.toDTO(user) };
-    },
-  });
-
-  app.route({
-    method: "POST",
-    url: "/api/auth/forgot-password",
-    schema: { body: emailOnly },
-    handler: async (request: BodyRequest<typeof emailOnly>) => {
-      await auth.forgotPassword(request.body.email);
-      return { ok: true };
-    },
-  });
-
-  app.route({
-    method: "POST",
-    url: "/api/auth/reset-password",
-    schema: { body: resetBody },
-    handler: async (request: BodyRequest<typeof resetBody>) => {
-      await auth.resetPassword(request.body.token, request.body.newPassword);
-      return { ok: true };
     },
   });
 

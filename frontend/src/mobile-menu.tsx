@@ -13,6 +13,7 @@ const NAV_LINKS: MenuLink[] = [
   { href: "/", view: "latest", label: "Latest" },
   { href: "/", view: "followed", label: "Followed" },
   { href: "/", view: "boards", label: "Boards" },
+  { href: "/feedback", label: "Feedback" },
   { href: "/post", label: "Post" },
 ];
 
@@ -112,7 +113,7 @@ export function MobileMenu({ activeView }: { activeView?: MenuView }) {
               <>
                 <div className="mobile-menu-user">
                   <span className="mobile-menu-user-avatar" aria-hidden="true">{initials(user.displayName)}</span>
-                  <span className="mobile-menu-user-id"><strong>{user.displayName}</strong><small>@{user.username}</small></span>
+                  <span className="mobile-menu-user-id"><strong>{user.displayName}</strong><small>@{user.handle}</small></span>
                 </div>
                 <a className="menu-link menu-link-small" href="/settings" style={{ "--d": `${footerBase * 45}ms` } as CSSProperties} onClick={close}><SettingsIcon />Settings</a>
                 {user.role === "admin" && (

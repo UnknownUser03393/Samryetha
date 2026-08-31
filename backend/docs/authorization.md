@@ -50,6 +50,13 @@ admin ⊃ moderator ⊃ board-mod ⊃ student ⊃ guest
 | `moderation.unban` | **admin only** | null |
 | `attachment.create` / `attachment.delete` | active 用户（本人） | attachment |
 | `presence.heartbeat` | active 用户 | null |
+| `feedback.view` | active 用户，且为项目成员（admin 全通过） | feedbackProject |
+| `feedback.create` | active 用户，且为项目成员（admin 全通过） | feedbackProject |
+| `feedback.update` / `feedback.delete` | admin / 作者本人 / 该项目程序员 | feedbackItem |
+| `feedback.manage`（标完成/过期/恢复） | admin / 该项目程序员 | feedbackItem |
+| `feedback.project.manage`（建/改/删项目、派成员） | **admin only** | null |
+
+> 反馈的"程序员"来自 `feedback_project_members.is_programmer`，在 `can()` 内联查库，独立于论坛版主体系。
 
 ## 关键实现细节
 

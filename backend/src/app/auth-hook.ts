@@ -2,7 +2,7 @@ import type { FastifyInstance, FastifyRequest } from "fastify";
 import type { DbProvider } from "../infrastructure/db/client.js";
 import { getSessionUser, SESSION_COOKIE } from "../auth/session.js";
 import type { UserRole, UserStatus } from "../infrastructure/db/schema.js";
-import { authRequired, banned, emailNotVerified } from "./error.js";
+import { authRequired, banned, forbidden } from "./error.js";
 
 export interface SessionUser {
   id: number;
@@ -57,6 +57,6 @@ export function requireUser(request: FastifyRequest): SessionUser {
 export function requireActiveUser(request: FastifyRequest): SessionUser {
   const user = requireUser(request);
   if (user.status === "banned") throw banned();
-  if (user.status !== "active") throw emailNotVerified();
+  if (user.status !== "active") throw forbidden("Your account is not active");
   return user;
 }

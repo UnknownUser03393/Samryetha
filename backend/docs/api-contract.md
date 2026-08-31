@@ -103,6 +103,31 @@
 | `GET /moderation/actions` 🔒 | 审计日志 |
 | `POST /moderation/restore` 🔒 | 恢复已软删的讨论/回复 |
 
+## 反馈 `/api/feedback`（会员制，程序员/admin 可管理）
+
+| 端点 | 权限 |
+|------|------|
+| `GET /feedback/projects/mine` | active 用户，返回所属项目（admin 全部） |
+| `GET /feedback?projectId=` | 项目成员；返回 `{ items, canManage }` |
+| `POST /feedback` | 项目成员提交 `{ projectId, title, detail?, type, urgency? }` |
+| `PATCH /feedback/:id` | 作者本人 / 程序员 / admin |
+| `DELETE /feedback/:id` | 作者本人 / 程序员 / admin |
+| `POST /feedback/:id/status` | 程序员 / admin，`{ status: done\|expired\|open }` |
+| `GET/POST/PATCH/DELETE /feedback/projects...` | **仅 admin**（项目 CRUD） |
+| `PUT /feedback/projects/:id/members` | **仅 admin** `{ members: [{ userId, isProgrammer }] }` |
+| `GET/POST/PUT/DELETE /admin/feedback/keys` | **仅 admin**（Agent 密钥，POST 返回完整 key 一次） |
+| `GET/POST /admin/feedback/backups...` | **仅 admin**（备份 create/list/restore/settings） |
+
+## Agent API `/api/agent/v1`（api-key，`X-Api-Key` 头）
+
+| 端点 | 权限 |
+|------|------|
+| `GET /agent/v1`、`GET /agent/v1/README` | 免 key（超媒体索引 / 说明书） |
+| `GET /agent/v1/projects` | 任意 key（按 `projectIds` 过滤，空=全部） |
+| `GET /agent/v1/tasks?projectId&status&type` | 任意 key，返回列表 + open/done/expired 汇总 |
+| `GET /agent/v1/tasks/:id` | 任意 key（需在授权项目内） |
+| `POST /agent/v1/tasks/:id/status` | **write 角色**，`{ status: done\|open }` |
+
 ## 分页游标示例
 
 ```http

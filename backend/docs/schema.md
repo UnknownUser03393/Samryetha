@@ -55,6 +55,18 @@
 |----|----------|------|
 | `outbox_events` | `id`, `event_type`, `aggregate_type`, `aggregate_id`, `payload`(JSON), `status`(`pending`/`processing`/`processed`/`failed`), `attempts`, `available_at`(退避), `processed_at` | transactional outbox |
 
+### 反馈（feedback 模块，与板块/版主完全独立）
+
+| 表 | 关键字段 | 说明 |
+|----|----------|------|
+| `feedback_projects` | `id`, `name`, `description`, `created_by_user_id`, 软删列 | 反馈项目（不同于论坛板块） |
+| `feedback_project_members` | `project_id`+`user_id`(复合 PK), `is_programmer`(0/1) | 项目成员；`is_programmer=1` 为程序员（可标完成/过期/管理他人条目） |
+| `feedback_items` | `id`, `project_id`, `author_id`, `seq`(项目内递增), `title`, `detail`, `type`(`bug`/`suggestion`), `urgency`(`urgent`/`normal`), `status`(`open`/`done`/`expired`), `closed_at`, `edited_at`, 软删列；唯一索引 `(project_id, seq)` | 反馈条目（seq 按项目自动编号，唯一索引兜底并发） |
+| `feedback_api_keys` | `id`, `name`, `key_hash`(sha256), `key_prefix`, `role`(`read`/`write`), `project_ids`(JSON 数组，空=全部), `enabled`, `last_used_at` | Agent API 密钥（完整 key 仅创建时展示一次） |
+| `app_settings` | `key`(PK), `value`(JSON) | 通用键值设置（反馈备份 cron/keep、待恢复标记等） |
+
+> 备份：快照用 `VACUUM INTO` 生成完整库文件存 `data/backups/`；恢复 = 写待恢复标记，下次启动换库文件后生效。
+
 ## 迁移与未来切 PG
 
 - SQLite `autoincrement` → PG `identity`。

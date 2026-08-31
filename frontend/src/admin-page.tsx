@@ -2,11 +2,11 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState, type FormEve
 import * as AlertDialog from "@radix-ui/react-alert-dialog";
 import { UserMenu } from "./user-menu";
 import { Loading } from "./loading";
-import { api, ApiError, type AdminStats, type AdminUser, type BoardSummary, type BoardVisibility, type DeletedDiscussion, type DeletedReply, type ModerationAction, type ReportDTO, type UserRole, type UserStatus } from "./lib/api";
+import { api, ApiError, type AdminStats, type AdminUser, type BoardSummary, type BoardVisibility, type DeletedDiscussion, type DeletedReply, type FeedbackApiKey, type FeedbackBackupInfo, type FeedbackBackupSettings, type FeedbackProjectAdmin, type FeedbackProjectMember, type ModerationAction, type ReportDTO, type UserRole, type UserStatus } from "./lib/api";
 import { useAuth } from "./lib/auth";
 import { formatTime } from "./lib/format";
 
-type AdminSection = "dashboard" | "users" | "boards" | "moderation" | "audit";
+type AdminSection = "dashboard" | "users" | "boards" | "moderation" | "audit" | "feedback";
 
 const sections: { id: AdminSection; label: string }[] = [
   { id: "dashboard", label: "Dashboard" },
@@ -14,6 +14,7 @@ const sections: { id: AdminSection; label: string }[] = [
   { id: "boards", label: "Boards" },
   { id: "moderation", label: "Moderation" },
   { id: "audit", label: "Audit log" },
+  { id: "feedback", label: "Feedback" },
 ];
 
 const STATUS_PILLS: { key: UserStatus | "all"; label: string }[] = [
@@ -52,7 +53,7 @@ export function AdminPage() {
   useEffect(() => {
     if (typeof window === "undefined") return;
     const s = new URLSearchParams(window.location.search).get("section");
-    if (s === "users" || s === "boards" || s === "moderation" || s === "audit") {
+    if (s === "users" || s === "boards" || s === "moderation" || s === "audit" || s === "feedback") {
       setSelectedSection(s);
       setSection(s);
     }
@@ -132,6 +133,7 @@ export function AdminPage() {
           {section === "boards" && <BoardsSection />}
           {section === "moderation" && <ModerationSection />}
           {section === "audit" && <AuditSection />}
+          {section === "feedback" && <FeedbackSection />}
         </section>
       </main>
     </Shell>
@@ -289,7 +291,7 @@ function UsersSection() {
             <div className="admin-row" key={user.id}>
               <div className="admin-row-main">
                 <strong>{user.displayName}</strong>
-                <span className="admin-muted">@{user.username} · {user.email}</span>
+                <span className="admin-muted">@{user.handle} · {user.email}</span>
                 <div className="admin-row-tags">
                   <Badge variant={user.role}>{user.role}</Badge>
                   <Badge variant={user.status}>{user.status}</Badge>
@@ -312,7 +314,7 @@ function UsersSection() {
                   </select>
                 </label>
                 {user.status === "pending" && (
-                  <button className="admin-btn" type="button" disabled={busyId !== null} onClick={() => void runAction(user, () => api.admin.verifyUser(user.id), "User verified.")}>Verify</button>
+                  <button className="admin-btn" type="button" disabled={busyId !== null} onClick={() => void runAction(user, () => api.admin.verifyUser(user.id), "Application approved.")}>Approve</button>
                 )}
                 {user.status === "active" && (
                   <>
@@ -360,7 +362,7 @@ function BoardsSection() {
   const [notice, setNotice] = useState<string | null>(null);
   const [editingSlug, setEditingSlug] = useState<string | null>(null);
   const [membersSlug, setMembersSlug] = useState<string | null>(null);
-  const [membersMap, setMembersMap] = useState<Record<string, { id: number; username: string; displayName: string; role: "member" | "moderator" }[]>>({});
+  const [membersMap, setMembersMap] = useState<Record<string, { id: number; username: string; handle: string; displayName: string; role: "member" | "moderator" }[]>>({});
 
   const [createOpen, setCreateOpen] = useState(false);
   const [createName, setCreateName] = useState("");
@@ -515,7 +517,7 @@ function BoardsSection() {
                 <div className="admin-members">
                   {(membersMap[board.slug] ?? []).map((member) => (
                     <div className="admin-member" key={member.id}>
-                      <span className="admin-muted">@{member.username}</span>
+                      <span className="admin-muted">@{member.handle}</span>
                       <label className="admin-select">
                         <span className="sr-only">Member role</span>
                         <select
@@ -663,9 +665,9 @@ function ReportsList() {
             return (
               <div className="admin-row" key={report.id}>
                 <div className="admin-row-main">
-                  <strong>{t?.title ?? t?.displayName ?? t?.username ?? `#${report.reportableId}`}</strong>
+                  <strong>{t?.title ?? t?.displayName ?? t?.handle ?? t?.username ?? `#${report.reportableId}`}</strong>
                   {href && <a className="sender" href={href}>view</a>}
-                  <span className="admin-muted">{report.reason || "No reason given"} · reported by @{report.reporter.username} · {formatTime(report.createdAt)}</span>
+                  <span className="admin-muted">{report.reason || "No reason given"} · reported by @{report.reporter.handle} · {formatTime(report.createdAt)}</span>
                 </div>
                 <div className="admin-row-actions">
                   <button className="admin-btn" type="button" disabled={busyId !== null} onClick={() => void run(report, () => api.moderation.resolveReport(report.id, { status: "in_progress", action: "report.in_progress" }), "Marked in progress.")}>In progress</button>
@@ -743,7 +745,7 @@ function DeletedList() {
                   <strong>{d.title}</strong>
                   <span className="admin-muted">{d.preview} · /{d.boardSlug}</span>
                   <div className="admin-row-tags">
-                    {d.deletedBy && <span className="admin-muted">by @{d.deletedBy.username}</span>}
+                    {d.deletedBy && <span className="admin-muted">by @{d.deletedBy.handle}</span>}
                     <span className="admin-muted">{formatTime(d.deletedAt)}</span>
                   </div>
                 </div>
@@ -831,7 +833,7 @@ function AuditSection() {
             <div className="admin-row" key={action.id}>
               <div className="admin-row-main">
                 <strong>{action.action}</strong>
-                <span className="admin-muted">{action.actor.displayName} (@{action.actor.username}) → {action.targetType}#{action.targetId}</span>
+                <span className="admin-muted">{action.actor.displayName} (@{action.actor.handle}) → {action.targetType}#{action.targetId}</span>
                 {action.reason && <span className="admin-muted">· {action.reason}</span>}
               </div>
               <div className="admin-row-tags"><span className="admin-muted">{formatTime(action.createdAt)}</span></div>
@@ -880,6 +882,546 @@ function Shell({ children }: { children: React.ReactNode }) {
         </div>
       </header>
       {children}
+    </>
+  );
+}
+
+// ---------------------------------------------------------------- feedback
+
+type FeedbackTab = "projects" | "keys" | "backup";
+type MemberFlags = Record<number, { member: boolean; programmer: boolean }>;
+
+const BACKUP_PERIODS: [string, string][] = [
+  ["", "Off"],
+  ["0 * * * *", "Every hour"],
+  ["0 3 * * *", "Daily (3am)"],
+  ["0 3 * * 1", "Weekly (Mon 3am)"],
+  ["0 3 1 * *", "Monthly (1st 3am)"],
+];
+
+function FeedbackSection() {
+  const [tab, setTab] = useState<FeedbackTab>("projects");
+  return (
+    <div className="content-fade">
+      <header><h2>Feedback</h2><p>Projects, Agent API keys, and backups.</p></header>
+      <div className="admin-pills" role="tablist" aria-label="Feedback admin views">
+        {([["projects", "Projects"], ["keys", "Agent keys"], ["backup", "Backup"]] as [FeedbackTab, string][]).map(([id, label]) => (
+          <button key={id} className={`admin-pill ${tab === id ? "active" : ""}`} type="button" role="tab" aria-selected={tab === id} onClick={() => setTab(id)}>{label}</button>
+        ))}
+      </div>
+      {tab === "projects" && <FeedbackProjectsView />}
+      {tab === "keys" && <FeedbackKeysView />}
+      {tab === "backup" && <FeedbackBackupView />}
+    </div>
+  );
+}
+
+function FeedbackProjectsView() {
+  const [projects, setProjects] = useState<FeedbackProjectAdmin[]>([]);
+  const [userOptions, setUserOptions] = useState<AdminUser[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [editing, setEditing] = useState<FeedbackProjectAdmin | null>(null);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [form, setForm] = useState({ name: "", description: "" });
+  const [flags, setFlags] = useState<MemberFlags>({});
+  const [formError, setFormError] = useState("");
+  const [deleting, setDeleting] = useState<FeedbackProjectAdmin | null>(null);
+
+  const load = useCallback(async () => {
+    try {
+      const [p, u] = await Promise.all([
+        api.feedbackAdmin.projects(),
+        api.admin.users({ status: "active", limit: 200 }),
+      ]);
+      setProjects(p.items);
+      setUserOptions(u.items);
+      setNotice(null);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Could not load projects.");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const openCreate = () => {
+    setEditing(null);
+    setForm({ name: "", description: "" });
+    setFlags({});
+    setFormError("");
+    setModalOpen(true);
+  };
+
+  const openEdit = (p: FeedbackProjectAdmin) => {
+    setEditing(p);
+    setForm({ name: p.name, description: p.description });
+    const next: MemberFlags = {};
+    for (const m of p.members) next[m.userId] = { member: true, programmer: m.isProgrammer };
+    setFlags(next);
+    setFormError("");
+    setModalOpen(true);
+  };
+
+  const save = async () => {
+    if (!form.name.trim()) {
+      setFormError("Project name is required.");
+      return;
+    }
+    const members = Object.entries(flags)
+      .filter(([, v]) => v.member)
+      .map(([userId, v]) => ({ userId: Number(userId), isProgrammer: v.programmer }));
+    try {
+      if (editing) {
+        await api.feedbackAdmin.updateProject(editing.id, { name: form.name.trim(), description: form.description });
+        await api.feedbackAdmin.setMembers(editing.id, members);
+      } else {
+        const created = await api.feedbackAdmin.createProject({ name: form.name.trim(), description: form.description });
+        await api.feedbackAdmin.setMembers(created.id, members);
+      }
+      setModalOpen(false);
+      setNotice("Project saved.");
+      void load();
+    } catch (err) {
+      setFormError(err instanceof ApiError ? err.message : "Failed to save project.");
+    }
+  };
+
+  const remove = async (p: FeedbackProjectAdmin) => {
+    try {
+      await api.feedbackAdmin.delProject(p.id);
+      setDeleting(null);
+      setNotice("Project deleted.");
+      void load();
+    } catch (err) {
+      setNotice(err instanceof ApiError ? err.message : "Failed to delete project.");
+      setDeleting(null);
+    }
+  };
+
+  if (error) {
+    return (
+      <div className="empty-state">
+        {error}
+        <button className="admin-btn" type="button" onClick={() => void load()}>Try again</button>
+      </div>
+    );
+  }
+  if (loading) return <Loading />;
+
+  return (
+    <>
+      {notice && <p className="notice">{notice}</p>}
+      <div className="view-head" style={{ marginTop: 8 }}>
+        <p className="admin-muted">Members can submit feedback; programmers can also mark items done or expired.</p>
+        <button className="admin-btn" type="button" onClick={openCreate}>New project</button>
+      </div>
+
+      <div className="admin-list">
+        {projects.length === 0 ? (
+          <div className="empty-state">No projects yet. Create one to get started.</div>
+        ) : (
+          projects.map((p) => (
+            <div className="admin-row admin-row-stacked" key={p.id}>
+              <div className="admin-row-main">
+                <strong>{p.name}</strong>
+                <span className="admin-muted">{p.description || "—"}</span>
+                <div className="admin-row-tags">
+                  <span className="admin-muted">
+                    {p.members.length
+                      ? p.members.map((m) => `${m.handle}${m.isProgrammer ? " (programmer)" : ""}`).join(", ")
+                      : "No members"}
+                  </span>
+                </div>
+              </div>
+              <div className="admin-row-actions">
+                <button className="admin-btn" type="button" onClick={() => openEdit(p)}>Edit</button>
+                <AlertDialog.Root open={deleting?.id === p.id} onOpenChange={(o) => !o && setDeleting(null)}>
+                  <AlertDialog.Trigger asChild>
+                    <button className="admin-btn danger" type="button" onClick={() => setDeleting(p)}>Delete</button>
+                  </AlertDialog.Trigger>
+                  <AlertDialog.Portal>
+                    <AlertDialog.Overlay className="dialog-overlay" />
+                    <AlertDialog.Content className="dialog-content">
+                      <AlertDialog.Title className="dialog-title">Delete project “{p.name}”?</AlertDialog.Title>
+                      <AlertDialog.Description className="dialog-description">
+                        This also deletes all feedback in the project. This can’t be undone.
+                      </AlertDialog.Description>
+                      <div className="dialog-actions">
+                        <AlertDialog.Cancel asChild>
+                          <button type="button" className="action-btn">Cancel</button>
+                        </AlertDialog.Cancel>
+                        <AlertDialog.Action asChild>
+                          <button type="button" className="dialog-danger" onClick={() => void remove(p)}>Delete</button>
+                        </AlertDialog.Action>
+                      </div>
+                    </AlertDialog.Content>
+                  </AlertDialog.Portal>
+                </AlertDialog.Root>
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+
+      {modalOpen && (
+        <div className="dialog-overlay" onClick={() => setModalOpen(false)}>
+          <div className="dialog-content feedback-modal" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
+            <h2 className="dialog-title">{editing ? `Edit project` : "New project"}</h2>
+            <form onSubmit={(e) => { e.preventDefault(); void save(); }}>
+              <label className="form-field">
+                <span>Name</span>
+                <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} maxLength={64} autoFocus />
+              </label>
+              <label className="form-field">
+                <span>Description</span>
+                <textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} maxLength={500} rows={3} />
+              </label>
+              <h4 className="sub-title">Members (check to add; “programmer” can manage items)</h4>
+              <div className="member-picker">
+                {userOptions.length === 0 ? (
+                  <div className="admin-muted">No active users.</div>
+                ) : (
+                  userOptions.map((u) => {
+                    const flag = flags[u.id] ?? { member: false, programmer: false };
+                    return (
+                      <div className="member-row" key={u.id}>
+                        <label><input type="checkbox" checked={flag.member} onChange={(e) => setFlags((prev) => ({ ...prev, [u.id]: { member: e.target.checked, programmer: flag.programmer } }))} /> @{u.handle}</label>
+                        <label className="muted"><input type="checkbox" disabled={!flag.member} checked={flag.member && flag.programmer} onChange={(e) => setFlags((prev) => ({ ...prev, [u.id]: { member: true, programmer: e.target.checked } }))} /> Programmer</label>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+              {formError && <div className="dialog-error">{formError}</div>}
+              <div className="dialog-actions">
+                <button type="button" className="action-btn" onClick={() => setModalOpen(false)}>Cancel</button>
+                <button type="submit" className="primary-action">Save</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+function FeedbackKeysView() {
+  const [keys, setKeys] = useState<FeedbackApiKey[]>([]);
+  const [projects, setProjects] = useState<FeedbackProjectAdmin[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [form, setForm] = useState({ name: "", role: "read" as "read" | "write" });
+  const [scopedIds, setScopedIds] = useState<number[]>([]);
+  const [formError, setFormError] = useState("");
+  const [shownKey, setShownKey] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    try {
+      const [k, p] = await Promise.all([api.feedbackAdmin.keys(), api.feedbackAdmin.projects()]);
+      setKeys(k.items);
+      setProjects(p.items);
+      setNotice(null);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Could not load API keys.");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const create = async () => {
+    if (!form.name.trim()) {
+      setFormError("Key name is required.");
+      return;
+    }
+    try {
+      const res = await api.feedbackAdmin.createKey({ name: form.name.trim(), role: form.role, projectIds: scopedIds });
+      setShownKey(res.key);
+      setCreateOpen(false);
+      setForm({ name: "", role: "read" });
+      setScopedIds([]);
+      void load();
+    } catch (err) {
+      setFormError(err instanceof ApiError ? err.message : "Failed to create key.");
+    }
+  };
+
+  if (error) {
+    return (
+      <div className="empty-state">
+        {error}
+        <button className="admin-btn" type="button" onClick={() => void load()}>Try again</button>
+      </div>
+    );
+  }
+  if (loading) return <Loading />;
+
+  return (
+    <>
+      {notice && <p className="notice">{notice}</p>}
+      <div className="view-head" style={{ marginTop: 8 }}>
+        <p className="admin-muted">Keys let AI / curl read tasks and (with write role) mark them done. Unchecking all projects = access to all.</p>
+        <button className="admin-btn" type="button" onClick={() => { setForm({ name: "", role: "read" }); setScopedIds([]); setFormError(""); setCreateOpen(true); }}>New key</button>
+      </div>
+
+      <div className="admin-list">
+        {keys.length === 0 ? (
+          <div className="empty-state">No API keys yet.</div>
+        ) : (
+          keys.map((k) => (
+            <div className="admin-row admin-row-stacked" key={k.id}>
+              <div className="admin-row-main">
+                <strong>{k.name} <span className="admin-badge bug">#{k.prefix}…</span> <Badge variant={k.role}>{k.role}</Badge> <Badge variant={k.enabled ? "done" : "expired"}>{k.enabled ? "Enabled" : "Disabled"}</Badge></strong>
+                <span className="admin-muted">
+                  Scope: {k.projectIds.length ? k.projectIds.map((id) => projects.find((p) => p.id === id)?.name ?? `#${id}`).join(", ") : "All projects"}
+                  {k.lastUsedAt ? ` · last used ${formatTime(k.lastUsedAt)}` : ""}
+                </span>
+              </div>
+              <div className="admin-row-actions">
+                <button className="admin-btn" type="button" onClick={() => void (async () => {
+                  try {
+                    await api.feedbackAdmin.setKeyEnabled(k.id, !k.enabled);
+                    void load();
+                  } catch (err) {
+                    setNotice(err instanceof ApiError ? err.message : "Failed to toggle key.");
+                  }
+                })()}>{k.enabled ? "Disable" : "Enable"}</button>
+                <AlertDialog.Root>
+                  <AlertDialog.Trigger asChild>
+                    <button className="admin-btn danger" type="button">Delete</button>
+                  </AlertDialog.Trigger>
+                  <AlertDialog.Portal>
+                    <AlertDialog.Overlay className="dialog-overlay" />
+                    <AlertDialog.Content className="dialog-content">
+                      <AlertDialog.Title className="dialog-title">Delete key “{k.name}”?</AlertDialog.Title>
+                      <AlertDialog.Description className="dialog-description">The key stops working immediately.</AlertDialog.Description>
+                      <div className="dialog-actions">
+                        <AlertDialog.Cancel asChild>
+                          <button type="button" className="action-btn">Cancel</button>
+                        </AlertDialog.Cancel>
+                        <AlertDialog.Action asChild>
+                          <button type="button" className="dialog-danger" onClick={() => void (async () => {
+                            try {
+                              await api.feedbackAdmin.delKey(k.id);
+                              void load();
+                            } catch (err) {
+                              setNotice(err instanceof ApiError ? err.message : "Failed to delete key.");
+                            }
+                          })()}>Delete</button>
+                        </AlertDialog.Action>
+                      </div>
+                    </AlertDialog.Content>
+                  </AlertDialog.Portal>
+                </AlertDialog.Root>
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+
+      {createOpen && (
+        <div className="dialog-overlay" onClick={() => setCreateOpen(false)}>
+          <div className="dialog-content feedback-modal" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
+            <h2 className="dialog-title">New Agent API key</h2>
+            <form onSubmit={(e) => { e.preventDefault(); void create(); }}>
+              <label className="form-field">
+                <span>Name</span>
+                <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} maxLength={64} placeholder="e.g. my-agent" autoFocus />
+              </label>
+              <label className="form-field">
+                <span>Role</span>
+                <select value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value as "read" | "write" })}>
+                  <option value="read">Read only</option>
+                  <option value="write">Read + mark done</option>
+                </select>
+              </label>
+              <h4 className="sub-title">Accessible projects (none selected = all)</h4>
+              <div className="member-picker">
+                {projects.length === 0 ? (
+                  <div className="admin-muted">No projects.</div>
+                ) : (
+                  projects.map((p) => (
+                    <div className="member-row" key={p.id}>
+                      <label>
+                        <input
+                          type="checkbox"
+                          checked={scopedIds.includes(p.id)}
+                          onChange={(e) => setScopedIds((prev) => (e.target.checked ? [...prev, p.id] : prev.filter((x) => x !== p.id)))}
+                        />
+                        {p.name}
+                      </label>
+                    </div>
+                  ))
+                )}
+              </div>
+              {formError && <div className="dialog-error">{formError}</div>}
+              <div className="dialog-actions">
+                <button type="button" className="action-btn" onClick={() => setCreateOpen(false)}>Cancel</button>
+                <button type="submit" className="primary-action">Create</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {shownKey && (
+        <div className="dialog-overlay" onClick={() => setShownKey(null)}>
+          <div className="dialog-content feedback-modal" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
+            <h2 className="dialog-title">API key created</h2>
+            <p className="admin-muted">Copy it now — it’s only shown once. Use it as <code>X-Api-Key: &lt;key&gt;</code> against <code>/api/agent/v1/tasks</code>.</p>
+            <label className="form-field">
+              <span>API key</span>
+              <textarea readOnly value={shownKey} rows={2} onFocus={(e) => e.target.select()} />
+            </label>
+            <div className="dialog-actions">
+              <button type="button" className="primary-action" onClick={() => { void navigator.clipboard.writeText(shownKey); }}>Copy</button>
+              <button type="button" className="action-btn" onClick={() => setShownKey(null)}>Close</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+function FeedbackBackupView() {
+  const [backups, setBackups] = useState<FeedbackBackupInfo[]>([]);
+  const [settings, setSettings] = useState<FeedbackBackupSettings>({ backupCron: "", backupKeep: 5 });
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    try {
+      const data = await api.feedbackAdmin.backups();
+      setBackups(data.backups);
+      setSettings(data.settings);
+      setNotice(null);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Could not load backups.");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const saveSettings = async (next: FeedbackBackupSettings) => {
+    try {
+      await api.feedbackAdmin.saveBackupSettings(next);
+      setSettings(next);
+      setNotice("Backup settings saved.");
+    } catch (err) {
+      setNotice(err instanceof ApiError ? err.message : "Failed to save settings.");
+    }
+  };
+
+  const restore = async (name: string) => {
+    try {
+      const res = await api.feedbackAdmin.restoreBackup(name);
+      setNotice(res.restartRequired ? "Restore scheduled — restart the server to apply." : "Restored.");
+    } catch (err) {
+      setNotice(err instanceof ApiError ? err.message : "Failed to restore.");
+    }
+  };
+
+  if (error) {
+    return (
+      <div className="empty-state">
+        {error}
+        <button className="admin-btn" type="button" onClick={() => void load()}>Try again</button>
+      </div>
+    );
+  }
+  if (loading) return <Loading />;
+
+  return (
+    <>
+      {notice && <p className="notice">{notice}</p>}
+      <div className="admin-filters">
+        <button className="admin-btn" type="button" onClick={() => void (async () => {
+          try {
+            await api.feedbackAdmin.createBackup();
+            setNotice("Backup created.");
+            void load();
+          } catch (err) {
+            setNotice(err instanceof ApiError ? err.message : "Failed to create backup.");
+          }
+        })()}>Back up now</button>
+        <label className="admin-select">
+          <span className="sr-only">Auto backup</span>
+          <select
+            value={settings.backupCron}
+            onChange={(e) => void saveSettings({ ...settings, backupCron: e.target.value })}
+          >
+            {BACKUP_PERIODS.map(([cron, label]) => (
+              <option key={cron || "off"} value={cron}>{label}</option>
+            ))}
+            {!BACKUP_PERIODS.some(([cron]) => cron === settings.backupCron) && settings.backupCron ? (
+              <option value={settings.backupCron}>Custom: {settings.backupCron}</option>
+            ) : null}
+          </select>
+        </label>
+        <label className="admin-select">
+          <span className="sr-only">Keep count</span>
+          <select value={settings.backupKeep} onChange={(e) => void saveSettings({ ...settings, backupKeep: Number(e.target.value) })}>
+            {[1, 5, 10, 20, 50].map((n) => (
+              <option key={n} value={n}>Keep {n} backups</option>
+            ))}
+          </select>
+        </label>
+      </div>
+
+      <div className="admin-list">
+        {backups.length === 0 ? (
+          <div className="empty-state">No backups yet.</div>
+        ) : (
+          backups.map((b) => (
+            <div className="admin-row" key={b.name}>
+              <div className="admin-row-main">
+                <strong>{b.name}</strong>
+                <span className="admin-muted">{formatTime(b.createdAt)} · {(b.size / 1024).toFixed(0)} KB</span>
+              </div>
+              <div className="admin-row-actions">
+                <AlertDialog.Root>
+                  <AlertDialog.Trigger asChild>
+                    <button className="admin-btn" type="button">Restore</button>
+                  </AlertDialog.Trigger>
+                  <AlertDialog.Portal>
+                    <AlertDialog.Overlay className="dialog-overlay" />
+                    <AlertDialog.Content className="dialog-content">
+                      <AlertDialog.Title className="dialog-title">Restore “{b.name}”?</AlertDialog.Title>
+                      <AlertDialog.Description className="dialog-description">
+                        Current data will be replaced. The restore applies on the next server restart.
+                      </AlertDialog.Description>
+                      <div className="dialog-actions">
+                        <AlertDialog.Cancel asChild>
+                          <button type="button" className="action-btn">Cancel</button>
+                        </AlertDialog.Cancel>
+                        <AlertDialog.Action asChild>
+                          <button type="button" className="dialog-danger" onClick={() => void restore(b.name)}>Restore</button>
+                        </AlertDialog.Action>
+                      </div>
+                    </AlertDialog.Content>
+                  </AlertDialog.Portal>
+                </AlertDialog.Root>
+              </div>
+            </div>
+          ))
+        )}
+      </div>
     </>
   );
 }

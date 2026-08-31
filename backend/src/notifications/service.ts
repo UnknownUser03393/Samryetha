@@ -2,6 +2,7 @@ import { and, count, desc, eq, inArray, lt } from "drizzle-orm";
 import type { DbProvider } from "../infrastructure/db/client.js";
 import { notifications, users, type NotificationType } from "../infrastructure/db/schema.js";
 import { notFound } from "../app/error.js";
+import { makeHandle } from "../users/service.js";
 import { toMs } from "../lib/time.js";
 
 export interface CreateNotificationInput {
@@ -16,7 +17,7 @@ export interface CreateNotificationInput {
 export interface NotificationDTO {
   id: number;
   type: NotificationType;
-  actor: { id: number; username: string; displayName: string } | null;
+  actor: { id: number; username: string; handle: string; displayName: string } | null;
   body: string | null;
   discussionId: number | null;
   replyId: number | null;
@@ -81,7 +82,7 @@ export function createNotificationService(db: DbProvider): NotificationService {
         return {
           id: r.id,
           type: r.type,
-          actor: actor ? { id: actor.id, username: actor.username, displayName: actor.display_name } : null,
+          actor: actor ? { id: actor.id, username: actor.username, handle: makeHandle(actor.username, actor.discriminator), displayName: actor.display_name } : null,
           body: r.body,
           discussionId: r.discussion_id,
           replyId: r.reply_id,

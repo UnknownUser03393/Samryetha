@@ -3,6 +3,7 @@ import type { DbProvider } from "../infrastructure/db/client.js";
 import { emitEvent } from "../infrastructure/db/client.js";
 import { assertCan, type Actor, Abilities, type AuthzCtx } from "../authz/can.js";
 import { notFound, conflict } from "../app/error.js";
+import { makeHandle } from "../users/service.js";
 import {
   bans,
   boards,
@@ -21,13 +22,14 @@ export interface ReportTargetDTO {
   title?: string;
   boardSlug?: string;
   username?: string;
+  handle?: string;
   displayName?: string;
   discussionId?: number;
 }
 
 export interface ReportDTO {
   id: number;
-  reporter: { id: number; username: string; displayName: string };
+  reporter: { id: number; username: string; handle: string; displayName: string };
   reportableType: string;
   reportableId: number;
   target?: ReportTargetDTO;
@@ -38,7 +40,7 @@ export interface ReportDTO {
 
 export interface ModerationActionDTO {
   id: number;
-  actor: { id: number; username: string; displayName: string };
+  actor: { id: number; username: string; handle: string; displayName: string };
   action: string;
   targetType: string;
   targetId: number;
@@ -56,10 +58,12 @@ export interface ModerationService {
   restoreContent(actor: Actor, input: { targetType: string; targetId: number; reason?: string }): Promise<void>;
 }
 
-function toReportDTO(row: typeof reports.$inferSelect & { reporterUsername: string; reporterDisplayName: string }): ReportDTO {
+function toReportDTO(
+  row: typeof reports.$inferSelect & { reporterUsername: string; reporterDisplayName: string; reporterDiscriminator: number | null },
+): ReportDTO {
   return {
     id: row.id,
-    reporter: { id: row.reporter_user_id, username: row.reporterUsername, displayName: row.reporterDisplayName },
+    reporter: { id: row.reporter_user_id, username: row.reporterUsername, handle: makeHandle(row.reporterUsername, row.reporterDiscriminator), displayName: row.reporterDisplayName },
     reportableType: row.reportable_type,
     reportableId: row.reportable_id,
     reason: row.reason,
@@ -101,7 +105,7 @@ async function buildTargetMap(db: DbProvider, page: typeof reports.$inferSelect[
     map.set(`reply:${r.id}`, { type: "reply", id: r.id, discussionId: r.discussion_id });
   }
   for (const u of userRows) {
-    map.set(`user:${u.id}`, { type: "user", id: u.id, username: u.username, displayName: u.display_name });
+    map.set(`user:${u.id}`, { type: "user", id: u.id, username: u.username, handle: makeHandle(u.username, u.discriminator), displayName: u.display_name });
   }
   return map;
 }
@@ -125,7 +129,7 @@ export function createModerationService(db: DbProvider, c: AuthzCtx): Moderation
       });
       const row = await db.db.select().from(reports).where(eq(reports.id, id)).get();
       const reporter = await db.db.select().from(users).where(eq(users.id, row!.reporter_user_id)).get();
-      return toReportDTO({ ...row!, reporterUsername: reporter?.username ?? "", reporterDisplayName: reporter?.display_name ?? "" });
+      return toReportDTO({ ...row!, reporterUsername: reporter?.username ?? "", reporterDisplayName: reporter?.display_name ?? "", reporterDiscriminator: reporter?.discriminator ?? null });
     },
 
     async listReports(actor, opts) {
@@ -159,6 +163,7 @@ export function createModerationService(db: DbProvider, c: AuthzCtx): Moderation
           ...r,
           reporterUsername: reporterMap.get(r.reporter_user_id)?.username ?? "",
           reporterDisplayName: reporterMap.get(r.reporter_user_id)?.display_name ?? "",
+          reporterDiscriminator: reporterMap.get(r.reporter_user_id)?.discriminator ?? null,
         });
         const target = targetMap.get(`${r.reportable_type}:${r.reportable_id}`);
         return target ? { ...dto, target } : dto;
@@ -182,7 +187,7 @@ export function createModerationService(db: DbProvider, c: AuthzCtx): Moderation
       });
       const row = await db.db.select().from(reports).where(eq(reports.id, reportId)).get();
       const reporter = await db.db.select().from(users).where(eq(users.id, row!.reporter_user_id)).get();
-      return toReportDTO({ ...row!, reporterUsername: reporter?.username ?? "", reporterDisplayName: reporter?.display_name ?? "" });
+      return toReportDTO({ ...row!, reporterUsername: reporter?.username ?? "", reporterDisplayName: reporter?.display_name ?? "", reporterDiscriminator: reporter?.discriminator ?? null });
     },
 
     async banUser(actor, input) {
@@ -259,7 +264,7 @@ export function createModerationService(db: DbProvider, c: AuthzCtx): Moderation
       const actorMap = new Map(actors.map((u) => [u.id, u]));
       const items: ModerationActionDTO[] = page.map((r) => ({
         id: r.id,
-        actor: { id: r.actor_user_id, username: actorMap.get(r.actor_user_id)?.username ?? "", displayName: actorMap.get(r.actor_user_id)?.display_name ?? "" },
+        actor: { id: r.actor_user_id, username: actorMap.get(r.actor_user_id)?.username ?? "", handle: makeHandle(actorMap.get(r.actor_user_id)?.username ?? "", actorMap.get(r.actor_user_id)?.discriminator ?? null), displayName: actorMap.get(r.actor_user_id)?.display_name ?? "" },
         action: r.action,
         targetType: r.target_type,
         targetId: r.target_id,

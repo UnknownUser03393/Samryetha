@@ -40,9 +40,10 @@ src/
   realtime/       # SSE /api/events 通道
   attachments/    # presign→上传→绑定→下载
   moderation/     # 举报/封禁/审计/内容恢复
+  feedback/       # 反馈：项目/成员(程序员)/条目 + Agent API + 备份恢复
   infrastructure/ # db / cache / presence / queue / storage / email / events
   config/         # 环境变量校验（Zod）
-  scripts/        # seed 幂等脚本
+  scripts/        # seed 兜底脚本（确保内置账号；mock 已停用）
 ```
 
 **依赖规则**：
@@ -102,7 +103,7 @@ backend/
 ```bash
 pnpm install
 pnpm db:migrate       # 建表
-pnpm seed             # 幂等 seed
+pnpm seed             # 确保内置 admin/dev 账号（启动时也会自动创建）
 pnpm dev              # tsx watch，端口 3001，/docs 出 OpenAPI
 pnpm test             # vitest（SQLite :memory:）
 pnpm build            # tsc 编译到 dist/

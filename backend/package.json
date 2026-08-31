@@ -32,6 +32,7 @@
     "fastify": "^5.12.1",
     "fastify-type-provider-zod": "^7.0.0",
     "marked": "^18.0.11",
+    "node-cron": "^4.6.0",
     "sanitize-html": "^2.17.7",
     "zod": "^4.5.2"
   },

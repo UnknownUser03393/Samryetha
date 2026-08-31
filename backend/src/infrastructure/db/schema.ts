@@ -49,6 +49,8 @@ export const users = sqliteTable(
     password_hash: text("password_hash").notNull(),
     role: text("role", { enum: USER_ROLES }).notNull().default("student"),
     status: text("status", { enum: USER_STATUSES }).notNull().default("pending"),
+    /** 随机 4 位身份号：handle = username#discriminator（内测期无邮箱，靠这个区分） */
+    discriminator: integer("discriminator"),
     email_domain: text("email_domain"),
     email_verified_at: timestamp("email_verified_at"),
     avatar_object_key: text("avatar_object_key"),
@@ -61,7 +63,7 @@ export const users = sqliteTable(
         notif_mentions?: boolean;
         weekly_digest?: boolean;
         public_profile?: boolean;
-        theme?: "system" | "light" | "dark";
+        direct_messages?: boolean;
         reduce_motion?: boolean;
         compact_lists?: boolean;
       }>()
@@ -73,6 +75,7 @@ export const users = sqliteTable(
   (t) => [
     uniqueIndex("users_email_unique").on(t.email),
     uniqueIndex("users_username_unique").on(t.username),
+    uniqueIndex("users_discriminator_unique").on(t.discriminator),
     index("users_status_idx").on(t.status),
   ],
 );
@@ -448,6 +451,107 @@ export const outboxEvents = sqliteTable(
   (t) => [index("outbox_status_available_idx").on(t.status, t.available_at, t.id)],
 );
 
+// ---------------------------------------------------------------- feedback
+
+export const FEEDBACK_TYPES = ["bug", "suggestion"] as const;
+export type FeedbackType = (typeof FEEDBACK_TYPES)[number];
+
+export const FEEDBACK_URGENCIES = ["urgent", "normal"] as const;
+export type FeedbackUrgency = (typeof FEEDBACK_URGENCIES)[number];
+
+export const FEEDBACK_STATUSES = ["open", "done", "expired"] as const;
+export type FeedbackStatus = (typeof FEEDBACK_STATUSES)[number];
+
+export const feedbackProjects = sqliteTable(
+  "feedback_projects",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    name: text("name").notNull(),
+    description: text("description").notNull().default(""),
+    created_by_user_id: integer("created_by_user_id").references(() => users.id),
+    ...softDeleteColumns,
+    created_at: timestamp("created_at").notNull().$defaultFn(nowDate),
+    updated_at: timestamp("updated_at").notNull().$defaultFn(nowDate),
+  },
+  (t) => [index("feedback_projects_created_idx").on(t.created_at)],
+);
+
+export const feedbackProjectMembers = sqliteTable(
+  "feedback_project_members",
+  {
+    project_id: integer("project_id")
+      .notNull()
+      .references(() => feedbackProjects.id),
+    user_id: integer("user_id")
+      .notNull()
+      .references(() => users.id),
+    is_programmer: integer("is_programmer").notNull().default(0),
+    joined_at: timestamp("joined_at").notNull().$defaultFn(nowDate),
+  },
+  (t) => [
+    primaryKey({ columns: [t.project_id, t.user_id] }),
+    index("feedback_project_members_user_idx").on(t.user_id),
+  ],
+);
+
+export const feedbackItems = sqliteTable(
+  "feedback_items",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    project_id: integer("project_id")
+      .notNull()
+      .references(() => feedbackProjects.id),
+    author_id: integer("author_id")
+      .notNull()
+      .references(() => users.id),
+    seq: integer("seq").notNull(),
+    title: text("title").notNull(),
+    detail: text("detail").notNull().default(""),
+    type: text("type", { enum: FEEDBACK_TYPES }).notNull(),
+    urgency: text("urgency", { enum: FEEDBACK_URGENCIES }).notNull().default("normal"),
+    status: text("status", { enum: FEEDBACK_STATUSES }).notNull().default("open"),
+    closed_at: timestamp("closed_at"),
+    edited_at: timestamp("edited_at"),
+    ...softDeleteColumns,
+    created_at: timestamp("created_at").notNull().$defaultFn(nowDate),
+    updated_at: timestamp("updated_at").notNull().$defaultFn(nowDate),
+  },
+  (t) => [
+    uniqueIndex("feedback_items_project_seq_unique").on(t.project_id, t.seq),
+    index("feedback_items_project_status_idx").on(t.project_id, t.status),
+    index("feedback_items_author_idx").on(t.author_id),
+  ],
+);
+
+export const FEEDBACK_KEY_ROLES = ["read", "write"] as const;
+export type FeedbackKeyRole = (typeof FEEDBACK_KEY_ROLES)[number];
+
+export const feedbackApiKeys = sqliteTable(
+  "feedback_api_keys",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    name: text("name").notNull(),
+    key_hash: text("key_hash").notNull().unique(),
+    key_prefix: text("key_prefix").notNull(),
+    role: text("role", { enum: FEEDBACK_KEY_ROLES }).notNull().default("read"),
+    project_ids: text("project_ids", { mode: "json" })
+      .$type<number[]>()
+      .notNull()
+      .default([]),
+    enabled: integer("enabled").notNull().default(1),
+    last_used_at: timestamp("last_used_at"),
+    created_at: timestamp("created_at").notNull().$defaultFn(nowDate),
+  },
+  (t) => [index("feedback_api_keys_created_idx").on(t.created_at)],
+);
+
+// ---------------------------------------------------------------- app settings
+
+export const appSettings = sqliteTable("app_settings", {
+  key: text("key").primaryKey(),
+  value: text("value", { mode: "json" }).$type<unknown>().notNull(),
+});
+
 /** drizzle 实例的完整 schema 聚合。 */
 export const DbSchema = {
   users,
@@ -468,6 +572,11 @@ export const DbSchema = {
   emailVerificationTokens,
   passwordResetTokens,
   outboxEvents,
+  feedbackProjects,
+  feedbackProjectMembers,
+  feedbackItems,
+  feedbackApiKeys,
+  appSettings,
 } as const;
 
 export type DbSchema = typeof DbSchema;

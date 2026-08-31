@@ -3,6 +3,7 @@ import type { FastifyInstance } from "fastify";
 import type { Container } from "../app/container.js";
 import { requireActiveUser } from "../app/auth-hook.js";
 import { users } from "../infrastructure/db/schema.js";
+import { makeHandle } from "../users/service.js";
 
 const HEARTBEAT_TTL_MS = 60_000;
 
@@ -26,11 +27,11 @@ export function registerPresenceRoutes(app: FastifyInstance, container: Containe
     handler: async () => {
       const userIds = await presence.onlineUserIds();
       const rows = userIds.length
-        ? await db.db.select({ id: users.id, username: users.username, display_name: users.display_name }).from(users).where(inArray(users.id, userIds))
+        ? await db.db.select({ id: users.id, username: users.username, display_name: users.display_name, discriminator: users.discriminator }).from(users).where(inArray(users.id, userIds))
         : [];
       return {
         onlineCount: rows.length,
-        onlineUsers: rows.map((u) => ({ id: u.id, username: u.username, displayName: u.display_name })),
+        onlineUsers: rows.map((u) => ({ id: u.id, username: u.username, handle: makeHandle(u.username, u.discriminator), displayName: u.display_name })),
       };
     },
   });

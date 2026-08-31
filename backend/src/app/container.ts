@@ -25,6 +25,8 @@ import { createNotificationService, type NotificationService } from "../notifica
 import { createSearchService, type SearchService } from "../search/service.js";
 import { createModerationService, type ModerationService } from "../moderation/service.js";
 import { createAdminService, type AdminService } from "../admin/service.js";
+import { createFeedbackService, type FeedbackService } from "../feedback/service.js";
+import { applyPendingRestore, createBackupService, type BackupService } from "../feedback/backup.js";
 
 export interface Logger {
   info(obj: unknown, msg?: string): void;
@@ -70,6 +72,8 @@ export interface Container {
   searchService: SearchService;
   moderationService: ModerationService;
   adminService: AdminService;
+  feedbackService: FeedbackService;
+  feedbackBackupService: BackupService;
   close(): Promise<void>;
 }
 
@@ -89,6 +93,9 @@ export async function buildContainer(
   if (env.DATABASE_URL !== ":memory:") {
     await mkdir(path.dirname(env.DATABASE_URL), { recursive: true });
   }
+
+  // 反馈备份恢复：若有待恢复标记，在打开连接前换库文件
+  await applyPendingRestore(env, logger);
 
   const db = await createDbProvider(env.DATABASE_URL, {
     runMigrations: options.runMigrations,
@@ -119,6 +126,8 @@ export async function buildContainer(
   const searchService = createSearchService(db);
   const moderationService = createModerationService(db, { db });
   const adminService = createAdminService(db, { db }, { presence });
+  const feedbackService = createFeedbackService(db);
+  const feedbackBackupService = createBackupService(db, env, logger);
 
   const container: Container = {
     env,
@@ -143,8 +152,11 @@ export async function buildContainer(
     searchService,
     moderationService,
     adminService,
+    feedbackService,
+    feedbackBackupService,
     attachments: undefined as never,
     async close() {
+      feedbackBackupService.stop();
       await outboxWorker.stop();
       cache.close();
       db.close();

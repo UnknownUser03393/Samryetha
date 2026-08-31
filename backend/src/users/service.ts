@@ -13,9 +13,26 @@ import { toMs } from "../lib/time.js";
 
 export type UserRow = typeof users.$inferSelect;
 
+/** handle = username#discriminator（无号时退回纯 username）。 */
+export function makeHandle(username: string, discriminator: number | null | undefined): string {
+  return discriminator ? `${username}#${discriminator}` : username;
+}
+
+/** 随机 4 位身份号（1000-9999），全局唯一，撞了重抽。 */
+export async function nextDiscriminator(db: DbProvider): Promise<number> {
+  for (let attempt = 0; attempt < 50; attempt++) {
+    const candidate = 1000 + Math.floor(Math.random() * 9000);
+    const exists = await db.db.select().from(users).where(eq(users.discriminator, candidate)).get();
+    if (!exists) return candidate;
+  }
+  throw new Error("Could not allocate a unique discriminator");
+}
+
 export interface UserDTO {
   id: number;
   username: string;
+  /** 展示用 handle，如 sora#1482 */
+  handle: string;
   displayName: string;
   email: string;
   role: UserRole;
@@ -31,6 +48,7 @@ export interface UserDTO {
 export interface PublicProfileDTO {
   id: number;
   username: string;
+  handle: string;
   displayName: string;
   bio: string;
   avatarObjectKey: string | null;
@@ -71,6 +89,7 @@ export function createUserService(db: DbProvider): UserService {
     return {
       id: row.id,
       username: row.username,
+      handle: makeHandle(row.username, row.discriminator),
       displayName: row.display_name,
       email: row.email,
       role: row.role,
@@ -137,6 +156,7 @@ export function createUserService(db: DbProvider): UserService {
       return {
         id: row.id,
         username: row.username,
+        handle: makeHandle(row.username, row.discriminator),
         displayName: row.display_name,
         bio: row.bio,
         avatarObjectKey: row.avatar_object_key,

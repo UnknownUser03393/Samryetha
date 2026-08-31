@@ -71,6 +71,8 @@ function createAdapter(raw: DatabaseSync) {
 
 export interface DbProvider {
   db: Db;
+  /** 原生连接：仅供备份等需要裸 SQL（如 VACUUM INTO）的场景使用，业务代码不要碰。 */
+  raw: DatabaseSync;
   tx<T>(fn: (tx: Tx) => Promise<T>): Promise<T>;
   close(): Promise<void>;
 }
@@ -94,6 +96,7 @@ export async function createDbProvider(
 
   return {
     db,
+    raw,
     async tx<T>(fn: (tx: Tx) => Promise<T>): Promise<T> {
       return db.transaction(async (tx) => {
         const context: TxContext = { tx: tx as Tx };
