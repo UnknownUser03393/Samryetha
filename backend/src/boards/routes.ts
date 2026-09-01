@@ -40,7 +40,7 @@ export function registerBoardRoutes(app: FastifyInstance, container: Container):
     method: "GET",
     url: "/api/boards",
     handler: async (request) => {
-      return { items: await boardService.listBoards(request.currentUser?.id ?? null) };
+      return { items: await boardService.listBoards(request.currentUser ?? null) };
     },
   });
 
@@ -49,7 +49,7 @@ export function registerBoardRoutes(app: FastifyInstance, container: Container):
     url: "/api/boards/:slug",
     schema: { params: slugParam },
     handler: async (request: FastifyRequest<{ Params: z.infer<typeof slugParam> }>) => {
-      return boardService.getBoard(request.currentUser?.id ?? null, request.params.slug);
+      return boardService.getBoard(request.currentUser ?? null, request.params.slug);
     },
   });
 
@@ -136,7 +136,7 @@ export function registerBoardRoutes(app: FastifyInstance, container: Container):
     url: "/api/boards/:slug/members",
     schema: { params: slugParam },
     handler: async (request: FastifyRequest<{ Params: z.infer<typeof slugParam> }>) => {
-      return { items: await boardService.listMembers(request.params.slug) };
+      return { items: await boardService.listMembers(request.currentUser ?? null, request.params.slug) };
     },
   });
 
