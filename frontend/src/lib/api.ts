@@ -369,6 +369,7 @@ export const api = {
     changeStatus: (id: number, body: { status: "active" | "deactivated"; reason?: string }) =>
       apiFetch<AdminUser>(`/api/admin/users/${id}/status`, { method: "PATCH", body }),
     verifyUser: (id: number) => apiFetch<AdminUser>(`/api/admin/users/${id}/verify`, { method: "POST", body: {} }),
+    deleteUser: (id: number) => apiFetch<{ ok: boolean }>(`/api/admin/users/${id}`, { method: "DELETE" }),
     deletedContent: (params: { discussionCursor?: number; replyCursor?: number; limit?: number } = {}) =>
       apiFetch<{ discussions: DeletedDiscussion[]; replies: DeletedReply[]; nextDiscussionCursor: number | null; nextReplyCursor: number | null }>(
         `/api/admin/moderation/deleted${qs(params)}`,

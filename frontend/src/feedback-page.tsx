@@ -13,6 +13,7 @@ import {
 } from "./lib/api";
 import { useAuth } from "./lib/auth";
 import { formatTime } from "./lib/format";
+import { SDropdown } from "./s-dropdown";
 
 type TypeFilter = "" | FeedbackType;
 type UrgencyFilter = "" | FeedbackUrgency;
@@ -191,8 +192,8 @@ export function FeedbackPage() {
             <span className="fb-seq">#{item.seq}</span> {item.title}
           </strong>
           <div className="admin-row-tags">
-            <span className={`admin-badge ${item.type === "bug" ? "bug" : "suggestion"}`}>{TYPE_LABEL[item.type]}</span>
-            {item.urgency === "urgent" ? <span className="admin-badge urgent">Urgent</span> : null}
+            <span className={`feedback-tag feedback-tag-${item.type}`}>{TYPE_LABEL[item.type]}</span>
+            {item.urgency === "urgent" ? <span className="feedback-tag feedback-tag-urgent">Urgent</span> : null}
             {item.status !== "open" ? <span className={`admin-badge ${item.status}`}>{STATUS_LABEL[item.status]}</span> : null}
             <span className="admin-muted">
               by <b>{item.author.handle}</b> · {formatTime(item.createdAt)}
@@ -291,26 +292,33 @@ export function FeedbackPage() {
                   <span className="sr-only">Search feedback</span>
                   <input type="search" placeholder="Search title, detail, author…" value={query} onChange={(e) => setQuery(e.target.value)} />
                 </label>
-                <div className="admin-pills">
-                  {(["", "bug", "suggestion"] as TypeFilter[]).map((t) => (
-                    <button key={t || "all"} className={`admin-pill ${typeFilter === t ? "active" : ""}`} type="button" onClick={() => setTypeFilter(t)}>
-                      {t === "" ? "All types" : TYPE_LABEL[t]}
-                    </button>
-                  ))}
-                  {(["", "urgent", "normal"] as UrgencyFilter[]).map((u) => (
-                    <button key={u || "allu"} className={`admin-pill ${urgencyFilter === u ? "active" : ""}`} type="button" onClick={() => setUrgencyFilter(u)}>
-                      {u === "" ? "All urgency" : URGENCY_LABEL[u]}
-                    </button>
-                  ))}
-                </div>
-                <label className="admin-select">
-                  <span className="sr-only">Sort</span>
-                  <select value={sort} onChange={(e) => setSort(e.target.value as SortKey)}>
-                    <option value="latest">Latest first</option>
-                    <option value="urgent">Urgent first</option>
-                    <option value="oldest">Oldest first</option>
-                  </select>
-                </label>
+                <SDropdown
+                  items={["", "bug", "suggestion"] as TypeFilter[]}
+                  value={typeFilter}
+                  onChange={setTypeFilter}
+                  getKey={(item) => item || "all-types"}
+                  getLabel={(item) => item ? TYPE_LABEL[item] : "All types"}
+                  ariaLabel="Filter by type"
+                  className="admin-dropdown"
+                />
+                <SDropdown
+                  items={["", "urgent", "normal"] as UrgencyFilter[]}
+                  value={urgencyFilter}
+                  onChange={setUrgencyFilter}
+                  getKey={(item) => item || "all-urgency"}
+                  getLabel={(item) => item ? URGENCY_LABEL[item] : "All urgency"}
+                  ariaLabel="Filter by urgency"
+                  className="admin-dropdown"
+                />
+                <SDropdown
+                  items={["latest", "urgent", "oldest"] as SortKey[]}
+                  value={sort}
+                  onChange={setSort}
+                  getKey={(item) => item}
+                  getLabel={(item) => ({ latest: "Latest first", urgent: "Urgent first", oldest: "Oldest first" })[item]}
+                  ariaLabel="Sort"
+                  className="admin-dropdown"
+                />
                 <div className="admin-pills">
                   <button className={`admin-pill ${scope === "all" ? "active" : ""}`} type="button" onClick={() => setScope("all")}>All</button>
                   <button className={`admin-pill ${scope === "mine" ? "active" : ""}`} type="button" onClick={() => setScope("mine")}>Mine</button>
@@ -342,20 +350,26 @@ export function FeedbackPage() {
                 <input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} maxLength={120} placeholder="One-line summary" autoFocus />
               </label>
               <div className="feedback-field-row">
-                <label className="form-field">
-                  <span>Type</span>
-                  <select value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value as FeedbackType })}>
-                    <option value="bug">Bug</option>
-                    <option value="suggestion">Suggestion</option>
-                  </select>
-                </label>
-                <label className="form-field">
-                  <span>Urgency</span>
-                  <select value={form.urgency} onChange={(e) => setForm({ ...form, urgency: e.target.value as FeedbackUrgency })}>
-                    <option value="normal">Normal</option>
-                    <option value="urgent">Urgent</option>
-                  </select>
-                </label>
+                <SDropdown
+                  items={["bug", "suggestion"] as FeedbackType[]}
+                  value={form.type}
+                  onChange={(type) => setForm({ ...form, type })}
+                  getKey={(item) => item}
+                  getLabel={(item) => TYPE_LABEL[item]}
+                  label="Type"
+                  ariaLabel="Feedback type"
+                  className="form-dropdown"
+                />
+                <SDropdown
+                  items={["normal", "urgent"] as FeedbackUrgency[]}
+                  value={form.urgency}
+                  onChange={(urgency) => setForm({ ...form, urgency })}
+                  getKey={(item) => item}
+                  getLabel={(item) => URGENCY_LABEL[item]}
+                  label="Urgency"
+                  ariaLabel="Feedback urgency"
+                  className="form-dropdown"
+                />
               </div>
               <label className="form-field">
                 <span>Detail</span>

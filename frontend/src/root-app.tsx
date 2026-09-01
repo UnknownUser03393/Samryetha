@@ -15,6 +15,28 @@ type TransitionDocument = Document & {
 };
 
 type TransitionStyle = "thread-enter" | "thread-return";
+type NotificationTone = "success" | "error" | "info";
+type NotificationItem = { id: number; message: string; tone: NotificationTone };
+
+function notificationTone(message: string): NotificationTone {
+  return /failed|could not|cannot|error|already|permission|managed/i.test(message) ? "error" : /saved|created|deleted|published|updated|restored|changed/i.test(message) ? "success" : "info";
+}
+
+function NotificationIcon({ tone }: { tone: NotificationTone }) {
+  if (tone === "success") return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 4.5 4.5L19 7" /></svg>;
+  if (tone === "error") return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 8v5m0 3.5v.1M4.7 19h14.6a1.7 1.7 0 0 0 1.5-2.5L13.5 4a1.7 1.7 0 0 0-3 0l-7.3 12.5A1.7 1.7 0 0 0 4.7 19Z" /></svg>;
+  return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 10v6m0-10v.1M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18Z" /></svg>;
+}
+
+function Notifications({ items }: { items: NotificationItem[] }) {
+  if (items.length === 0) return null;
+  return <div className="notifications" role="region" aria-label="Notifications" aria-live="polite">
+    {items.map((item) => <div className={`notification notification-${item.tone}`} role="status" key={item.id}>
+      <span className="notification-icon"><NotificationIcon tone={item.tone} /></span>
+      <span>{item.message}</span>
+    </div>)}
+  </div>;
+}
 
 function runTransition(update: () => void, style?: TransitionStyle) {
   const transitionDocument = document as TransitionDocument;
@@ -26,9 +48,11 @@ function runTransition(update: () => void, style?: TransitionStyle) {
   if (style) document.documentElement.dataset.transition = style;
   const transition = transitionDocument.startViewTransition(update);
   if (style) {
-    void transition.finished.finally(() => {
-      delete document.documentElement.dataset.transition;
-    });
+    void transition.finished
+      .catch(() => undefined)
+      .finally(() => {
+        delete document.documentElement.dataset.transition;
+      });
   }
 }
 
@@ -38,8 +62,9 @@ function RootAppInner({ pathname }: { pathname: string }) {
   const [activePath, setActivePath] = useState(pathname);
   const [discussionView, setDiscussionView] = useState<View>("latest");
   const [transitionTitle, setTransitionTitle] = useState<{ id: number; title: string } | null>(null);
-  const [toastVisible, setToastVisible] = useState(false);
-  const toastTimer = useRef<number | undefined>(undefined);
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const notificationId = useRef(0);
+  const notificationTimers = useRef<number[]>([]);
 
   useEffect(() => {
     const changePage = (
@@ -108,7 +133,7 @@ function RootAppInner({ pathname }: { pathname: string }) {
   }, [activePath]);
 
   useEffect(() => () => {
-    if (toastTimer.current) window.clearTimeout(toastTimer.current);
+    notificationTimers.current.forEach((timer) => window.clearTimeout(timer));
   }, []);
 
   const goToThread = (id: number) => {
@@ -128,10 +153,11 @@ function RootAppInner({ pathname }: { pathname: string }) {
     });
   };
 
-  const showToast = () => {
-    setToastVisible(true);
-    if (toastTimer.current) window.clearTimeout(toastTimer.current);
-    toastTimer.current = window.setTimeout(() => setToastVisible(false), 2000);
+  const showToast = (message: string) => {
+    const id = ++notificationId.current;
+    setNotifications((current) => [...current, { id, message, tone: notificationTone(message) }].slice(-4));
+    const timer = window.setTimeout(() => setNotifications((current) => current.filter((item) => item.id !== id)), 3000);
+    notificationTimers.current.push(timer);
   };
 
   const authModes: Partial<Record<string, AuthMode>> = { "/login": "login", "/register": "register" };
@@ -142,15 +168,15 @@ function RootAppInner({ pathname }: { pathname: string }) {
     const id = Number(detailMatch[1]);
     return <ThreadPage id={id} initialTitle={transitionTitle?.id === id ? transitionTitle.title : undefined} />;
   }
-  if (activePath === "/post") return <PostPage onPublished={(id) => { goToThread(id); showToast(); }} />;
+  if (activePath === "/post") return <><PostPage onPublished={(id) => { goToThread(id); showToast("Published"); }} /><Notifications items={notifications} /></>;
   if (activePath === "/profile") return <ProfilePage />;
   if (activePath === "/settings") return <SettingsPage />;
-  if (activePath === "/admin") return <AdminPage />;
+  if (activePath === "/admin") return <><AdminPage onNotify={showToast} /><Notifications items={notifications} /></>;
   if (activePath === "/feedback") return <FeedbackPage />;
   return (
     <>
       <DiscussionApp initialView={discussionView} onViewChange={setDiscussionView} />
-      {toastVisible && <div className="publish-toast" role="status" aria-live="polite">Published</div>}
+      <Notifications items={notifications} />
     </>
   );
 }

@@ -39,6 +39,7 @@ export const Abilities = {
   adminView: "admin.view",
   adminUserRoleUpdate: "admin.user.role.update",
   adminUserStatusUpdate: "admin.user.status.update",
+  adminUserDelete: "admin.user.delete",
   feedbackView: "feedback.view",
   feedbackCreate: "feedback.create",
   feedbackUpdate: "feedback.update",
@@ -145,6 +146,7 @@ export async function can(actor: Actor, ability: Ability, resource: Resource, c:
     case Abilities.adminView:
     case Abilities.adminUserRoleUpdate:
     case Abilities.adminUserStatusUpdate:
+    case Abilities.adminUserDelete:
     case Abilities.feedbackProjectManage:
       return actor?.role === "admin";
   }

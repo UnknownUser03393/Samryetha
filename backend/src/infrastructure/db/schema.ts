@@ -71,12 +71,14 @@ export const users = sqliteTable(
       .default({}),
     created_at: timestamp("created_at").notNull().$defaultFn(nowDate),
     updated_at: timestamp("updated_at").notNull().$defaultFn(nowDate),
+    deleted_at: timestamp("deleted_at"),
   },
   (t) => [
     uniqueIndex("users_email_unique").on(t.email),
     uniqueIndex("users_username_unique").on(t.username),
     uniqueIndex("users_discriminator_unique").on(t.discriminator),
     index("users_status_idx").on(t.status),
+    index("users_deleted_at_idx").on(t.deleted_at),
   ],
 );
 

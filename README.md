@@ -72,6 +72,18 @@ cd frontend && pnpm dev
 
 The frontend proxies `/api` requests to the backend. Database migrations run automatically when the backend starts; the built-in `admin` / `dev` accounts are created on startup (idempotently).
 
+## Production Deployment
+
+On an Ubuntu server with `node >= 20`, `pnpm`, `pm2`, and `nginx` installed:
+
+```bash
+./deploy.sh                                # Deploy on the server IP (http)
+DOMAIN=forum.example.com ./deploy.sh       # Deploy behind a domain (http)
+DOMAIN=forum.example.com SSL=1 ./deploy.sh # Deploy with Let's Encrypt HTTPS
+```
+
+The script installs dependencies, builds both packages, generates `backend/.env` (kept untouched if it already exists), starts `samryetha-backend` / `samryetha-frontend` under pm2, configures an nginx reverse proxy, optionally provisions SSL, and runs health checks. See [`backend/docs/architecture.md`](backend/docs/architecture.md) for variable reference and security notes.
+
 ## Common Commands
 
 Run commands from the relevant package directory.

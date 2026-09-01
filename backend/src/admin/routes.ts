@@ -59,6 +59,17 @@ export function registerAdminModule(app: FastifyInstance, container: Container):
   });
 
   app.route({
+    method: "DELETE",
+    url: "/api/admin/users/:id",
+    schema: { params: userIdParam },
+    handler: async (request: FastifyRequest<{ Params: z.infer<typeof userIdParam> }>) => {
+      const session = requireActiveUser(request);
+      await adminService.deleteUser(session, request.params.id);
+      return { ok: true };
+    },
+  });
+
+  app.route({
     method: "PATCH",
     url: "/api/admin/users/:id/role",
     schema: { params: userIdParam, body: changeRoleBody },

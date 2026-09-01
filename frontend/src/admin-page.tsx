@@ -2,6 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState, type FormEve
 import * as AlertDialog from "@radix-ui/react-alert-dialog";
 import { UserMenu } from "./user-menu";
 import { Loading } from "./loading";
+import { SDropdown } from "./s-dropdown";
 import { api, ApiError, type AdminStats, type AdminUser, type BoardSummary, type BoardVisibility, type DeletedDiscussion, type DeletedReply, type FeedbackApiKey, type FeedbackBackupInfo, type FeedbackBackupSettings, type FeedbackProjectAdmin, type FeedbackProjectMember, type ModerationAction, type ReportDTO, type UserRole, type UserStatus } from "./lib/api";
 import { useAuth } from "./lib/auth";
 import { formatTime } from "./lib/format";
@@ -40,7 +41,7 @@ function Badge({ children, variant }: { children: React.ReactNode; variant: stri
   return <span className={`admin-badge ${variant}`}>{children}</span>;
 }
 
-export function AdminPage() {
+export function AdminPage({ onNotify }: { onNotify: (message: string) => void }) {
   const { user, loading } = useAuth();
   const [section, setSection] = useState<AdminSection>("dashboard");
   const [selectedSection, setSelectedSection] = useState<AdminSection>("dashboard");
@@ -72,6 +73,10 @@ export function AdminPage() {
   const switchSection = (nextSection: AdminSection) => {
     if (nextSection === selectedSection) return;
     setSelectedSection(nextSection);
+    const url = new URL(window.location.href);
+    if (nextSection === "dashboard") url.searchParams.delete("section");
+    else url.searchParams.set("section", nextSection);
+    window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
 
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
       setSection(nextSection);
@@ -129,11 +134,11 @@ export function AdminPage() {
 
         <section className={`settings-content admin-content ${contentPhase}`} aria-live="polite">
           {section === "dashboard" && <DashboardSection />}
-          {section === "users" && <UsersSection />}
-          {section === "boards" && <BoardsSection />}
-          {section === "moderation" && <ModerationSection />}
+          {section === "users" && <UsersSection onNotify={onNotify} />}
+          {section === "boards" && <BoardsSection onNotify={onNotify} />}
+          {section === "moderation" && <ModerationSection onNotify={onNotify} />}
           {section === "audit" && <AuditSection />}
-          {section === "feedback" && <FeedbackSection />}
+          {section === "feedback" && <FeedbackSection onNotify={onNotify} />}
         </section>
       </main>
     </Shell>
@@ -199,13 +204,12 @@ function DashboardSection() {
 
 // ---------------------------------------------------------------- users
 
-function UsersSection() {
+function UsersSection({ onNotify }: { onNotify: (message: string) => void }) {
   const { user: me } = useAuth();
   const [items, setItems] = useState<AdminUser[]>([]);
   const [nextCursor, setNextCursor] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<number | null>(null);
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState<UserStatus | "all">("all");
@@ -246,16 +250,33 @@ function UsersSection() {
 
   const runAction = async (user: AdminUser, fn: () => Promise<unknown>, success: string) => {
     setBusyId(user.id);
-    setNotice(null);
     try {
       await fn();
       await loadFirst();
-      setNotice(success);
+      onNotify(success);
     } catch (err) {
-      setNotice(err instanceof ApiError ? err.message : "Action failed.");
+      onNotify(err instanceof ApiError ? err.message : "Action failed.");
     } finally {
       setBusyId(null);
     }
+  };
+
+  const changeUserStatus = (user: AdminUser, next: UserStatus) => {
+    if (next === user.status) return;
+    if (next === "banned") {
+      onNotify("Ban status is managed in Moderation.");
+      return;
+    }
+    if (next === "pending") {
+      onNotify("Pending status is managed by verification.");
+      return;
+    }
+    const action = next === "active" && user.status === "banned"
+      ? () => api.moderation.unban(user.username)
+      : next === "active" && user.status === "pending"
+        ? () => api.admin.verifyUser(user.id)
+        : () => api.admin.changeStatus(user.id, { status: next });
+    void runAction(user, action, `User status changed to ${next}.`);
   };
 
   return (
@@ -273,15 +294,17 @@ function UsersSection() {
             <button className={`admin-pill ${status === pill.key ? "active" : ""}`} type="button" key={pill.key} onClick={() => setStatus(pill.key)}>{pill.label}</button>
           ))}
         </div>
-        <label className="admin-select">
-          <span className="sr-only">Filter by role</span>
-          <select value={role} onChange={(event) => setRole(event.target.value as UserRole | "all")}>
-            {ROLE_OPTIONS.map((opt) => <option value={opt.key} key={opt.key}>{opt.label}</option>)}
-          </select>
-        </label>
+        <SDropdown
+          items={ROLE_OPTIONS}
+          value={ROLE_OPTIONS.find((option) => option.key === role) ?? null}
+          onChange={(option) => setRole(option.key)}
+          getKey={(option) => option.key}
+          getLabel={(option) => option.label}
+          ariaLabel="Filter by role"
+          className="admin-dropdown"
+        />
       </div>
 
-      {notice && <p className="form-error saved-note" role="status">{notice}</p>}
       {error && <div className="empty-state">{error}</div>}
       {loading ? (
         <Loading />
@@ -300,33 +323,46 @@ function UsersSection() {
                   <span className="admin-muted">joined {formatTime(user.createdAt)}</span>
                 </div>
               </div>
-              <div className="admin-row-actions" data-busy={busyId === user.id || undefined}>
-                <label className="admin-select">
-                  <span className="sr-only">Role</span>
-                  <select
-                    value={user.role}
-                    disabled={busyId !== null || user.id === me?.id}
-                    onChange={(event) => void runAction(user, () => api.admin.changeRole(user.id, { role: event.target.value as AdminUser["role"] }), "Role updated.")}
-                  >
-                    <option value="student">student</option>
-                    <option value="moderator">moderator</option>
-                    <option value="admin">admin</option>
-                  </select>
-                </label>
-                {user.status === "pending" && (
-                  <button className="admin-btn" type="button" disabled={busyId !== null} onClick={() => void runAction(user, () => api.admin.verifyUser(user.id), "Application approved.")}>Approve</button>
-                )}
-                {user.status === "active" && (
-                  <>
-                    <button className="admin-btn danger" type="button" disabled={busyId !== null} onClick={() => void runAction(user, () => api.moderation.ban({ username: user.username }), "User banned.")}>Ban</button>
-                    <button className="admin-btn" type="button" disabled={busyId !== null} onClick={() => void runAction(user, () => api.admin.changeStatus(user.id, { status: "deactivated" }), "User deactivated.")}>Deactivate</button>
-                  </>
-                )}
-                {user.status === "banned" && (
-                  <button className="admin-btn" type="button" disabled={busyId !== null} onClick={() => void runAction(user, () => api.moderation.unban(user.username), "User unbanned.")}>Unban</button>
-                )}
-                {user.status === "deactivated" && (
-                  <button className="admin-btn" type="button" disabled={busyId !== null} onClick={() => void runAction(user, () => api.admin.changeStatus(user.id, { status: "active" }), "User reactivated.")}>Reactivate</button>
+              <div className="admin-row-actions" data-busy={busyId === user.id || undefined} aria-label={`Actions for ${user.displayName}`}>
+                <SDropdown
+                  items={["student", "moderator", "admin"] as UserRole[]}
+                  value={user.role}
+                  onChange={(nextRole) => void runAction(user, () => api.admin.changeRole(user.id, { role: nextRole }), "Role updated.")}
+                  getKey={(item) => item}
+                  getLabel={(item) => item}
+                  label="Role"
+                  ariaLabel={`Role for ${user.displayName}`}
+                  className="admin-control admin-dropdown"
+                  disabled={busyId !== null || user.id === me?.id}
+                />
+                <SDropdown
+                  items={["pending", "active", "banned", "deactivated"] as UserStatus[]}
+                  value={user.status}
+                  onChange={(nextStatus) => changeUserStatus(user, nextStatus)}
+                  getKey={(item) => item}
+                  getLabel={(item) => item}
+                  label="Status"
+                  ariaLabel={`Status for ${user.displayName}`}
+                  className="admin-control admin-dropdown"
+                  disabled={busyId !== null || user.id === me?.id}
+                />
+                {user.id !== me?.id && (
+                  <AlertDialog.Root>
+                    <AlertDialog.Trigger asChild>
+                      <button className="admin-btn danger" type="button" disabled={busyId !== null}>Delete</button>
+                    </AlertDialog.Trigger>
+                    <AlertDialog.Portal>
+                      <AlertDialog.Overlay className="dialog-overlay" />
+                      <AlertDialog.Content className="dialog-content">
+                        <AlertDialog.Title className="dialog-title">Delete {user.displayName}?</AlertDialog.Title>
+                        <AlertDialog.Description className="dialog-description">Their posts stay in place, but this account is deactivated and anonymized. This can’t be undone.</AlertDialog.Description>
+                        <div className="dialog-actions">
+                          <AlertDialog.Cancel asChild><button type="button" className="action-btn">Cancel</button></AlertDialog.Cancel>
+                          <AlertDialog.Action asChild><button type="button" className="dialog-danger" onClick={() => void runAction(user, () => api.admin.deleteUser(user.id), "User deleted.")}>Delete</button></AlertDialog.Action>
+                        </div>
+                      </AlertDialog.Content>
+                    </AlertDialog.Portal>
+                  </AlertDialog.Root>
                 )}
               </div>
             </div>
@@ -341,7 +377,7 @@ function UsersSection() {
             setItems((prev) => [...prev, ...data.items]);
             setNextCursor(data.nextCursor ? Number(data.nextCursor) : null);
           } catch (err) {
-            setNotice(err instanceof ApiError ? err.message : "Could not load more.");
+            onNotify(err instanceof ApiError ? err.message : "Could not load more.");
           }
         })()}>Load more</button>
       )}
@@ -352,14 +388,13 @@ function UsersSection() {
 
 // ---------------------------------------------------------------- boards
 
-const VISIBILITIES = ["public", "members", "private"];
-const POSTING_POLICIES = ["everyone", "members", "moderators"];
+const VISIBILITIES: BoardVisibility[] = ["public", "members", "private"];
+const POSTING_POLICIES: ("everyone" | "members" | "moderators")[] = ["everyone", "members", "moderators"];
 
-function BoardsSection() {
+function BoardsSection({ onNotify }: { onNotify: (message: string) => void }) {
   const [boards, setBoards] = useState<BoardSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
   const [editingSlug, setEditingSlug] = useState<string | null>(null);
   const [membersSlug, setMembersSlug] = useState<string | null>(null);
   const [membersMap, setMembersMap] = useState<Record<string, { id: number; username: string; handle: string; displayName: string; role: "member" | "moderator" }[]>>({});
@@ -388,8 +423,7 @@ function BoardsSection() {
   }, [load]);
 
   const flash = (message: string) => {
-    setNotice(message);
-    window.setTimeout(() => setNotice(null), 2500);
+    onNotify(message);
   };
 
   const createBoard = async (event: FormEvent<HTMLFormElement>) => {
@@ -441,7 +475,6 @@ function BoardsSection() {
     <>
       <header><h2>Boards</h2><p>Create, edit, and organize boards.</p></header>
 
-      {notice && <p className="form-error saved-note" role="status">{notice}</p>}
       {error && <div className="empty-state">{error}</div>}
 
       <div className="admin-create-toggle">
@@ -453,16 +486,26 @@ function BoardsSection() {
           <label><span>Slug</span><input value={createSlug} onChange={(e) => setCreateSlug(e.target.value)} pattern="[a-z0-9-]+" maxLength={50} required placeholder="campus-life" /></label>
           <label><span>Description</span><input value={createDesc} onChange={(e) => setCreateDesc(e.target.value)} maxLength={500} /></label>
           <div className="admin-inline-selects">
-            <label className="admin-select"><span>Visibility</span>
-              <select value={createVisibility} onChange={(e) => setCreateVisibility(e.target.value as BoardVisibility)}>
-                {VISIBILITIES.map((v) => <option key={v}>{v}</option>)}
-              </select>
-            </label>
-            <label className="admin-select"><span>Posting</span>
-              <select value={createPosting} onChange={(e) => setCreatePosting(e.target.value as "everyone" | "members" | "moderators")}>
-                {POSTING_POLICIES.map((v) => <option key={v}>{v}</option>)}
-              </select>
-            </label>
+            <SDropdown
+              items={VISIBILITIES}
+              value={createVisibility}
+              onChange={(value) => setCreateVisibility(value)}
+              getKey={(item) => item}
+              getLabel={(item) => item}
+              label="Visibility"
+              ariaLabel="Board visibility"
+              className="admin-dropdown"
+            />
+            <SDropdown
+              items={POSTING_POLICIES}
+              value={createPosting}
+              onChange={(value) => setCreatePosting(value)}
+              getKey={(item) => item}
+              getLabel={(item) => item}
+              label="Posting"
+              ariaLabel="Board posting policy"
+              className="admin-dropdown"
+            />
           </div>
           <button className="primary-action" type="submit" disabled={createBusy || !createName.trim() || !createSlug.trim()}>{createBusy ? "Creating…" : "Create board"}</button>
         </form>
@@ -518,24 +561,23 @@ function BoardsSection() {
                   {(membersMap[board.slug] ?? []).map((member) => (
                     <div className="admin-member" key={member.id}>
                       <span className="admin-muted">@{member.handle}</span>
-                      <label className="admin-select">
-                        <span className="sr-only">Member role</span>
-                        <select
-                          value={member.role}
-                          onChange={(event) => void (async () => {
-                            try {
-                              await api.boards.updateMemberRole(board.slug, member.id, { role: event.target.value as "member" | "moderator" });
-                              setMembersMap((prev) => ({ ...prev, [board.slug]: (prev[board.slug] ?? []).map((m) => (m.id === member.id ? { ...m, role: event.target.value as "member" | "moderator" } : m)) }));
-                              flash("Member role updated.");
-                            } catch (err) {
-                              flash(err instanceof ApiError ? err.message : "Could not update member role.");
-                            }
-                          })()}
-                        >
-                          <option value="member">member</option>
-                          <option value="moderator">moderator</option>
-                        </select>
-                      </label>
+                      <SDropdown
+                        items={["member", "moderator"] as ("member" | "moderator")[]}
+                        value={member.role}
+                        onChange={(nextRole) => void (async () => {
+                          try {
+                            await api.boards.updateMemberRole(board.slug, member.id, { role: nextRole });
+                            setMembersMap((prev) => ({ ...prev, [board.slug]: (prev[board.slug] ?? []).map((m) => (m.id === member.id ? { ...m, role: nextRole } : m)) }));
+                            flash("Member role updated.");
+                          } catch (err) {
+                            flash(err instanceof ApiError ? err.message : "Could not update member role.");
+                          }
+                        })()}
+                        getKey={(item) => item}
+                        getLabel={(item) => item}
+                        ariaLabel={`Role for ${member.handle}`}
+                        className="member-role admin-dropdown"
+                      />
                     </div>
                   ))}
                   {membersMap[board.slug]?.length === 0 && <p className="admin-muted">No members yet.</p>}
@@ -574,16 +616,8 @@ function BoardEditForm({ board, onDone, onError }: { board: BoardSummary; onDone
       <label><span>Name</span><input value={name} onChange={(e) => setName(e.target.value)} maxLength={60} required /></label>
       <label><span>Description</span><input value={desc} onChange={(e) => setDesc(e.target.value)} maxLength={500} /></label>
       <div className="admin-inline-selects">
-        <label className="admin-select"><span>Visibility</span>
-          <select value={visibility} onChange={(e) => setVisibility(e.target.value as BoardVisibility)}>
-            {VISIBILITIES.map((v) => <option key={v}>{v}</option>)}
-          </select>
-        </label>
-        <label className="admin-select"><span>Posting</span>
-          <select value={posting} onChange={(e) => setPosting(e.target.value as "everyone" | "members" | "moderators")}>
-            {POSTING_POLICIES.map((v) => <option key={v}>{v}</option>)}
-          </select>
-        </label>
+        <SDropdown items={VISIBILITIES} value={visibility} onChange={(value) => setVisibility(value)} getKey={(item) => item} getLabel={(item) => item} label="Visibility" ariaLabel="Board visibility" className="admin-dropdown" />
+        <SDropdown items={POSTING_POLICIES} value={posting} onChange={(value) => setPosting(value)} getKey={(item) => item} getLabel={(item) => item} label="Posting" ariaLabel="Board posting policy" className="admin-dropdown" />
       </div>
       <button className="primary-action" type="submit" disabled={busy || !name.trim()}>{busy ? "Saving…" : "Save board"}</button>
     </form>
@@ -592,25 +626,24 @@ function BoardEditForm({ board, onDone, onError }: { board: BoardSummary; onDone
 
 // ---------------------------------------------------------------- moderation
 
-function ModerationSection() {
+function ModerationSection({ onNotify }: { onNotify: (message: string) => void }) {
   const [tab, setTab] = useState<"reports" | "deleted">("reports");
   return (
     <>
-      <header><h2>Moderation</h2><p>Review reports and restore deleted content.</p></header>
-      <div className="admin-pills" role="tablist" aria-label="Moderation views">
+      <header className="admin-section-header"><h2>Moderation</h2></header>
+      <div className="admin-pills admin-section-tabs" role="tablist" aria-label="Moderation views">
         <button className={`admin-pill ${tab === "reports" ? "active" : ""}`} type="button" role="tab" aria-selected={tab === "reports"} onClick={() => setTab("reports")}>Open reports</button>
         <button className={`admin-pill ${tab === "deleted" ? "active" : ""}`} type="button" role="tab" aria-selected={tab === "deleted"} onClick={() => setTab("deleted")}>Deleted content</button>
       </div>
-      {tab === "reports" ? <ReportsList /> : <DeletedList />}
+      {tab === "reports" ? <ReportsList onNotify={onNotify} /> : <DeletedList onNotify={onNotify} />}
     </>
   );
 }
 
-function ReportsList() {
+function ReportsList({ onNotify }: { onNotify: (message: string) => void }) {
   const [items, setItems] = useState<ReportDTO[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<number | null>(null);
 
   const load = useCallback(async () => {
@@ -630,13 +663,12 @@ function ReportsList() {
 
   const run = async (report: ReportDTO, fn: () => Promise<unknown>, success: string) => {
     setBusyId(report.id);
-    setNotice(null);
     try {
       await fn();
       await load();
-      setNotice(success);
+      onNotify(success);
     } catch (err) {
-      setNotice(err instanceof ApiError ? err.message : "Action failed.");
+      onNotify(err instanceof ApiError ? err.message : "Action failed.");
     } finally {
       setBusyId(null);
     }
@@ -653,7 +685,6 @@ function ReportsList() {
 
   return (
     <>
-      {notice && <p className="form-error saved-note" role="status">{notice}</p>}
       {error && <div className="empty-state">{error}</div>}
       {loading ? (
         <Loading />
@@ -687,14 +718,13 @@ function ReportsList() {
   );
 }
 
-function DeletedList() {
+function DeletedList({ onNotify }: { onNotify: (message: string) => void }) {
   const [discussions, setDiscussions] = useState<DeletedDiscussion[]>([]);
   const [replies, setReplies] = useState<DeletedReply[]>([]);
   const [nextDiscCursor, setNextDiscCursor] = useState<number | null>(null);
   const [nextReplyCursor, setNextReplyCursor] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
   const [busyKey, setBusyKey] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -717,13 +747,12 @@ function DeletedList() {
 
   const restore = async (targetType: "discussion" | "reply", targetId: number) => {
     setBusyKey(`${targetType}:${targetId}`);
-    setNotice(null);
     try {
       await api.moderation.restore({ targetType, targetId });
       await load();
-      setNotice("Content restored.");
+      onNotify("Content restored.");
     } catch (err) {
-      setNotice(err instanceof ApiError ? err.message : "Could not restore.");
+      onNotify(err instanceof ApiError ? err.message : "Could not restore.");
     } finally {
       setBusyKey(null);
     }
@@ -731,7 +760,6 @@ function DeletedList() {
 
   return (
     <>
-      {notice && <p className="form-error saved-note" role="status">{notice}</p>}
       {error && <div className="empty-state">{error}</div>}
       {loading ? (
         <Loading />
@@ -762,7 +790,7 @@ function DeletedList() {
                 setDiscussions((prev) => [...prev, ...data.discussions]);
                 setNextDiscCursor(data.nextDiscussionCursor);
               } catch (err) {
-                setNotice(err instanceof ApiError ? err.message : "Could not load more.");
+                onNotify(err instanceof ApiError ? err.message : "Could not load more.");
               }
             })()}>Load more discussions</button>
           )}
@@ -792,7 +820,7 @@ function DeletedList() {
                 setReplies((prev) => [...prev, ...data.replies]);
                 setNextReplyCursor(data.nextReplyCursor);
               } catch (err) {
-                setNotice(err instanceof ApiError ? err.message : "Could not load more.");
+                onNotify(err instanceof ApiError ? err.message : "Could not load more.");
               }
             })()}>Load more replies</button>
           )}
@@ -899,29 +927,28 @@ const BACKUP_PERIODS: [string, string][] = [
   ["0 3 1 * *", "Monthly (1st 3am)"],
 ];
 
-function FeedbackSection() {
+function FeedbackSection({ onNotify }: { onNotify: (message: string) => void }) {
   const [tab, setTab] = useState<FeedbackTab>("projects");
   return (
     <div className="content-fade">
-      <header><h2>Feedback</h2><p>Projects, Agent API keys, and backups.</p></header>
-      <div className="admin-pills" role="tablist" aria-label="Feedback admin views">
+      <header className="admin-section-header"><h2>Feedback</h2></header>
+      <div className="admin-pills admin-section-tabs" role="tablist" aria-label="Feedback admin views">
         {([["projects", "Projects"], ["keys", "Agent keys"], ["backup", "Backup"]] as [FeedbackTab, string][]).map(([id, label]) => (
           <button key={id} className={`admin-pill ${tab === id ? "active" : ""}`} type="button" role="tab" aria-selected={tab === id} onClick={() => setTab(id)}>{label}</button>
         ))}
       </div>
-      {tab === "projects" && <FeedbackProjectsView />}
-      {tab === "keys" && <FeedbackKeysView />}
-      {tab === "backup" && <FeedbackBackupView />}
+      {tab === "projects" && <FeedbackProjectsView onNotify={onNotify} />}
+      {tab === "keys" && <FeedbackKeysView onNotify={onNotify} />}
+      {tab === "backup" && <FeedbackBackupView onNotify={onNotify} />}
     </div>
   );
 }
 
-function FeedbackProjectsView() {
+function FeedbackProjectsView({ onNotify }: { onNotify: (message: string) => void }) {
   const [projects, setProjects] = useState<FeedbackProjectAdmin[]>([]);
   const [userOptions, setUserOptions] = useState<AdminUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
   const [editing, setEditing] = useState<FeedbackProjectAdmin | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [form, setForm] = useState({ name: "", description: "" });
@@ -933,11 +960,10 @@ function FeedbackProjectsView() {
     try {
       const [p, u] = await Promise.all([
         api.feedbackAdmin.projects(),
-        api.admin.users({ status: "active", limit: 200 }),
+        api.admin.users({ status: "active", limit: 50 }),
       ]);
       setProjects(p.items);
       setUserOptions(u.items);
-      setNotice(null);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not load projects.");
     } finally {
@@ -984,7 +1010,7 @@ function FeedbackProjectsView() {
         await api.feedbackAdmin.setMembers(created.id, members);
       }
       setModalOpen(false);
-      setNotice("Project saved.");
+      onNotify("Project saved.");
       void load();
     } catch (err) {
       setFormError(err instanceof ApiError ? err.message : "Failed to save project.");
@@ -995,10 +1021,10 @@ function FeedbackProjectsView() {
     try {
       await api.feedbackAdmin.delProject(p.id);
       setDeleting(null);
-      setNotice("Project deleted.");
+      onNotify("Project deleted.");
       void load();
     } catch (err) {
-      setNotice(err instanceof ApiError ? err.message : "Failed to delete project.");
+      onNotify(err instanceof ApiError ? err.message : "Failed to delete project.");
       setDeleting(null);
     }
   };
@@ -1015,7 +1041,6 @@ function FeedbackProjectsView() {
 
   return (
     <>
-      {notice && <p className="notice">{notice}</p>}
       <div className="view-head" style={{ marginTop: 8 }}>
         <p className="admin-muted">Members can submit feedback; programmers can also mark items done or expired.</p>
         <button className="admin-btn" type="button" onClick={openCreate}>New project</button>
@@ -1110,12 +1135,11 @@ function FeedbackProjectsView() {
   );
 }
 
-function FeedbackKeysView() {
+function FeedbackKeysView({ onNotify }: { onNotify: (message: string) => void }) {
   const [keys, setKeys] = useState<FeedbackApiKey[]>([]);
   const [projects, setProjects] = useState<FeedbackProjectAdmin[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [form, setForm] = useState({ name: "", role: "read" as "read" | "write" });
   const [scopedIds, setScopedIds] = useState<number[]>([]);
@@ -1127,7 +1151,6 @@ function FeedbackKeysView() {
       const [k, p] = await Promise.all([api.feedbackAdmin.keys(), api.feedbackAdmin.projects()]);
       setKeys(k.items);
       setProjects(p.items);
-      setNotice(null);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not load API keys.");
     } finally {
@@ -1168,7 +1191,6 @@ function FeedbackKeysView() {
 
   return (
     <>
-      {notice && <p className="notice">{notice}</p>}
       <div className="view-head" style={{ marginTop: 8 }}>
         <p className="admin-muted">Keys let AI / curl read tasks and (with write role) mark them done. Unchecking all projects = access to all.</p>
         <button className="admin-btn" type="button" onClick={() => { setForm({ name: "", role: "read" }); setScopedIds([]); setFormError(""); setCreateOpen(true); }}>New key</button>
@@ -1193,7 +1215,7 @@ function FeedbackKeysView() {
                     await api.feedbackAdmin.setKeyEnabled(k.id, !k.enabled);
                     void load();
                   } catch (err) {
-                    setNotice(err instanceof ApiError ? err.message : "Failed to toggle key.");
+                    onNotify(err instanceof ApiError ? err.message : "Failed to toggle key.");
                   }
                 })()}>{k.enabled ? "Disable" : "Enable"}</button>
                 <AlertDialog.Root>
@@ -1215,7 +1237,7 @@ function FeedbackKeysView() {
                               await api.feedbackAdmin.delKey(k.id);
                               void load();
                             } catch (err) {
-                              setNotice(err instanceof ApiError ? err.message : "Failed to delete key.");
+                              onNotify(err instanceof ApiError ? err.message : "Failed to delete key.");
                             }
                           })()}>Delete</button>
                         </AlertDialog.Action>
@@ -1238,13 +1260,16 @@ function FeedbackKeysView() {
                 <span>Name</span>
                 <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} maxLength={64} placeholder="e.g. my-agent" autoFocus />
               </label>
-              <label className="form-field">
-                <span>Role</span>
-                <select value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value as "read" | "write" })}>
-                  <option value="read">Read only</option>
-                  <option value="write">Read + mark done</option>
-                </select>
-              </label>
+              <SDropdown
+                items={["read", "write"] as ("read" | "write")[]}
+                value={form.role}
+                onChange={(role) => setForm({ ...form, role })}
+                getKey={(item) => item}
+                getLabel={(item) => item === "read" ? "Read only" : "Read + mark done"}
+                label="Role"
+                ariaLabel="Agent API key role"
+                className="form-dropdown"
+              />
               <h4 className="sub-title">Accessible projects (none selected = all)</h4>
               <div className="member-picker">
                 {projects.length === 0 ? (
@@ -1294,19 +1319,17 @@ function FeedbackKeysView() {
   );
 }
 
-function FeedbackBackupView() {
+function FeedbackBackupView({ onNotify }: { onNotify: (message: string) => void }) {
   const [backups, setBackups] = useState<FeedbackBackupInfo[]>([]);
   const [settings, setSettings] = useState<FeedbackBackupSettings>({ backupCron: "", backupKeep: 5 });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
       const data = await api.feedbackAdmin.backups();
       setBackups(data.backups);
       setSettings(data.settings);
-      setNotice(null);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not load backups.");
     } finally {
@@ -1322,18 +1345,18 @@ function FeedbackBackupView() {
     try {
       await api.feedbackAdmin.saveBackupSettings(next);
       setSettings(next);
-      setNotice("Backup settings saved.");
+      onNotify("Backup settings saved.");
     } catch (err) {
-      setNotice(err instanceof ApiError ? err.message : "Failed to save settings.");
+      onNotify(err instanceof ApiError ? err.message : "Failed to save settings.");
     }
   };
 
   const restore = async (name: string) => {
     try {
       const res = await api.feedbackAdmin.restoreBackup(name);
-      setNotice(res.restartRequired ? "Restore scheduled — restart the server to apply." : "Restored.");
+      onNotify(res.restartRequired ? "Restore scheduled — restart the server to apply." : "Restored.");
     } catch (err) {
-      setNotice(err instanceof ApiError ? err.message : "Failed to restore.");
+      onNotify(err instanceof ApiError ? err.message : "Failed to restore.");
     }
   };
 
@@ -1349,39 +1372,34 @@ function FeedbackBackupView() {
 
   return (
     <>
-      {notice && <p className="notice">{notice}</p>}
       <div className="admin-filters">
         <button className="admin-btn" type="button" onClick={() => void (async () => {
           try {
             await api.feedbackAdmin.createBackup();
-            setNotice("Backup created.");
+            onNotify("Backup created.");
             void load();
           } catch (err) {
-            setNotice(err instanceof ApiError ? err.message : "Failed to create backup.");
+            onNotify(err instanceof ApiError ? err.message : "Failed to create backup.");
           }
         })()}>Back up now</button>
-        <label className="admin-select">
-          <span className="sr-only">Auto backup</span>
-          <select
-            value={settings.backupCron}
-            onChange={(e) => void saveSettings({ ...settings, backupCron: e.target.value })}
-          >
-            {BACKUP_PERIODS.map(([cron, label]) => (
-              <option key={cron || "off"} value={cron}>{label}</option>
-            ))}
-            {!BACKUP_PERIODS.some(([cron]) => cron === settings.backupCron) && settings.backupCron ? (
-              <option value={settings.backupCron}>Custom: {settings.backupCron}</option>
-            ) : null}
-          </select>
-        </label>
-        <label className="admin-select">
-          <span className="sr-only">Keep count</span>
-          <select value={settings.backupKeep} onChange={(e) => void saveSettings({ ...settings, backupKeep: Number(e.target.value) })}>
-            {[1, 5, 10, 20, 50].map((n) => (
-              <option key={n} value={n}>Keep {n} backups</option>
-            ))}
-          </select>
-        </label>
+        <SDropdown
+          items={[...BACKUP_PERIODS, ...(settings.backupCron && !BACKUP_PERIODS.some(([cron]) => cron === settings.backupCron) ? [[settings.backupCron, `Custom: ${settings.backupCron}`] as [string, string]] : [])]}
+          value={BACKUP_PERIODS.find(([cron]) => cron === settings.backupCron) ?? ([settings.backupCron, `Custom: ${settings.backupCron}`] as [string, string])}
+          onChange={([backupCron]) => void saveSettings({ ...settings, backupCron })}
+          getKey={([cron]) => cron || "off"}
+          getLabel={([, label]) => label}
+          ariaLabel="Auto backup"
+          className="admin-dropdown"
+        />
+        <SDropdown
+          items={[1, 5, 10, 20, 50]}
+          value={settings.backupKeep}
+          onChange={(backupKeep) => void saveSettings({ ...settings, backupKeep })}
+          getKey={(item) => item}
+          getLabel={(item) => `Keep ${item} backups`}
+          ariaLabel="Keep count"
+          className="admin-dropdown"
+        />
       </div>
 
       <div className="admin-list">

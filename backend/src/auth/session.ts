@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from "node:crypto";
-import { and, eq, gt } from "drizzle-orm";
+import { and, eq, gt, isNull } from "drizzle-orm";
 import type { DbProvider } from "../infrastructure/db/client.js";
 import { sessions, users } from "../infrastructure/db/schema.js";
 
@@ -46,7 +46,7 @@ export async function getSessionUser(
     .select({ user: users })
     .from(sessions)
     .innerJoin(users, eq(sessions.user_id, users.id))
-    .where(and(eq(sessions.token_hash, hashToken(token)), gt(sessions.expires_at, new Date())))
+    .where(and(eq(sessions.token_hash, hashToken(token)), gt(sessions.expires_at, new Date()), isNull(users.deleted_at)))
     .get();
   return row?.user;
 }

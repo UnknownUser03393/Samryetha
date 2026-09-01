@@ -1,6 +1,6 @@
 import { Algorithm, hash, verify } from "@node-rs/argon2";
 import { randomBytes } from "node:crypto";
-import { eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import type { DbProvider } from "../infrastructure/db/client.js";
 import { users as usersTable } from "../infrastructure/db/schema.js";
 import type { Env } from "../config/env.js";
@@ -70,7 +70,7 @@ export function createAuthService(
     const user = await db.db
       .select()
       .from(usersTable)
-      .where(eq(usersTable.username, normalizeUsername(identifier)))
+      .where(and(eq(usersTable.username, normalizeUsername(identifier)), isNull(usersTable.deleted_at)))
       .get();
     if (!user) {
       await verify(DUMMY_HASH, randomBytes(16).toString("base64")).catch(() => false);

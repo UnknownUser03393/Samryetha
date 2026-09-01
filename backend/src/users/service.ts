@@ -76,13 +76,13 @@ export interface UserService {
 
 export function createUserService(db: DbProvider): UserService {
   async function getById(id: number) {
-    return db.db.select().from(users).where(eq(users.id, id)).get();
+    return db.db.select().from(users).where(and(eq(users.id, id), isNull(users.deleted_at))).get();
   }
   async function getByEmail(email: string) {
-    return db.db.select().from(users).where(eq(users.email, email.toLowerCase())).get();
+    return db.db.select().from(users).where(and(eq(users.email, email.toLowerCase()), isNull(users.deleted_at))).get();
   }
   async function getByUsername(username: string) {
-    return db.db.select().from(users).where(eq(users.username, normalizeUsername(username))).get();
+    return db.db.select().from(users).where(and(eq(users.username, normalizeUsername(username)), isNull(users.deleted_at))).get();
   }
 
   function toDTO(row: UserRow): UserDTO {

@@ -6,7 +6,7 @@ import { AdminIcon, LogOutIcon, ProfileIcon, SettingsIcon } from "./icons";
 type UserMenuLocation = "profile" | "settings" | "admin";
 
 export function UserMenu({ current }: { current?: UserMenuLocation }) {
-  const { user, logout } = useAuth();
+  const { user, loading, logout } = useAuth();
   const [open, setOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -26,7 +26,10 @@ export function UserMenu({ current }: { current?: UserMenuLocation }) {
     };
   }, [open]);
 
-  // 未登录：显示登录入口
+  if (loading) {
+    return <span className="user-menu-loading" aria-hidden="true" />;
+  }
+
   if (!user) {
     return (
       <a className="compose" href="/login" style={{ margin: 0 }}>Sign in</a>

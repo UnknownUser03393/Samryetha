@@ -9,7 +9,7 @@ import { and, desc, eq } from "drizzle-orm";
 import { loadEnv } from "../src/config/env.js";
 import { buildContainer, type Container } from "../src/app/container.js";
 import { buildApp } from "../src/app/server.js";
-import { outboxEvents, notifications, users, boards, boardMembers, discussions, moderationActions, bans, reports } from "../src/infrastructure/db/schema.js";
+import { outboxEvents, notifications, users, boards, boardMembers, discussions, replies, sessions, moderationActions, bans, reports } from "../src/infrastructure/db/schema.js";
 import { can, Abilities, type Actor, type AuthzCtx } from "../src/authz/can.js";
 import { createDiscussionService } from "../src/discussions/service.js";
 import { FAKE_EMAIL_DOMAIN } from "../src/auth/service.js";
@@ -589,6 +589,76 @@ describe("M7 管理后台", () => {
 
     const again = await app.inject({ method: "POST", url: `/api/admin/users/${pendRow!.id}/verify`, headers: { cookie: admin } });
     expect(again.statusCode).toBe(409);
+  });
+
+  it("管理员软删除用户：权限、匿名化、会话失效且保留内容关联", async () => {
+    const admin = await adminCookie("admin_delete");
+    const moderator = await registerUser("mod_delete");
+    await container.db.db.update(users).set({ role: "moderator" }).where(eq(users.username, "mod_delete"));
+    const target = await registerUser("deletetarget");
+    const targetRow = await container.db.db.select().from(users).where(eq(users.username, "deletetarget")).get();
+    const adminRow = await container.db.db.select().from(users).where(eq(users.username, "admin_delete")).get();
+    const targetId = targetRow!.id;
+
+    await app.inject({
+      method: "POST",
+      url: "/api/boards",
+      headers: { cookie: admin },
+      payload: { slug: "user-delete-board", name: "User Delete Board", description: "b", visibility: "public", postingPolicy: "everyone" },
+    });
+    const post = await app.inject({
+      method: "POST",
+      url: "/api/discussions",
+      headers: { cookie: target },
+      payload: { boardSlug: "user-delete-board", title: "Target thread", bodyMarkdown: "Target body" },
+    });
+    expect(post.statusCode).toBe(201);
+    const discussionId = JSON.parse(post.body).id as number;
+    const reply = await app.inject({
+      method: "POST",
+      url: `/api/discussions/${discussionId}/replies`,
+      headers: { cookie: admin },
+      payload: { bodyMarkdown: "Admin reply" },
+    });
+    expect(reply.statusCode).toBe(201);
+    const replyId = JSON.parse(reply.body).id as number;
+
+    const forbidden = await app.inject({ method: "DELETE", url: `/api/admin/users/${targetId}`, headers: { cookie: moderator } });
+    expect(forbidden.statusCode).toBe(403);
+
+    const deleted = await app.inject({ method: "DELETE", url: `/api/admin/users/${targetId}`, headers: { cookie: admin } });
+    expect(deleted.statusCode).toBe(200);
+    expect(JSON.parse(deleted.body).ok).toBe(true);
+
+    const rowAfter = await container.db.db.select().from(users).where(eq(users.id, targetId)).get();
+    expect(rowAfter).toBeDefined();
+    expect(rowAfter!.deleted_at).toBeInstanceOf(Date);
+    expect(rowAfter!.status).toBe("deactivated");
+    expect(rowAfter!.username).toBe(`deleted-${targetId}`);
+    expect(rowAfter!.email).toBe(`deleted-${targetId}@samryetha.local`);
+    expect(rowAfter!.display_name).toBe("Deleted user");
+    expect(rowAfter!.bio).toBe("");
+    expect(rowAfter!.avatar_object_key).toBeNull();
+
+    expect(await container.db.db.select().from(discussions).where(eq(discussions.id, discussionId)).get()).toBeDefined();
+    expect(await container.db.db.select().from(replies).where(eq(replies.id, replyId)).get()).toBeDefined();
+    expect(await container.db.db.select().from(sessions).where(eq(sessions.user_id, targetId)).all()).toHaveLength(0);
+
+    const kicked = await app.inject({ method: "GET", url: "/api/auth/me", headers: { cookie: target } });
+    expect(kicked.statusCode).toBe(401);
+    const relogin = await app.inject({ method: "POST", url: "/api/auth/login", payload: { username: "deletetarget", password: PASSWORD } });
+    expect(relogin.statusCode).toBe(401);
+    const profile = await app.inject({ method: "GET", url: "/api/users/deletetarget" });
+    expect(profile.statusCode).toBe(404);
+
+    const listed = await app.inject({ method: "GET", url: "/api/admin/users?q=deletetarget", headers: { cookie: admin } });
+    expect(listed.statusCode).toBe(200);
+    expect(JSON.parse(listed.body).items).toHaveLength(0);
+
+    const duplicate = await app.inject({ method: "DELETE", url: `/api/admin/users/${targetId}`, headers: { cookie: admin } });
+    expect(duplicate.statusCode).toBe(409);
+    const self = await app.inject({ method: "DELETE", url: `/api/admin/users/${adminRow!.id}`, headers: { cookie: admin } });
+    expect(self.statusCode).toBe(409);
   });
 
   it("删除内容清单 + restore 链路", async () => {

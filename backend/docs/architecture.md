@@ -111,7 +111,33 @@ pnpm build            # tsc 编译到 dist/
 
 端口用 **3001**（前端 Vite dev 占 3000）。
 
-## 6. 部署与扩展方向
+## 6. 一键部署（Ubuntu / pm2 / nginx）
+
+仓库根 `./deploy.sh` 从代码到可访问全程自动化。前置要求：`node >= 20`、`pnpm`、`pm2`、`nginx`（脚本只检查不自动安装系统包）。
+
+```bash
+./deploy.sh                                # 用本机 IP，http
+DOMAIN=forum.example.com ./deploy.sh       # 带域名，http
+DOMAIN=forum.example.com SSL=1 ./deploy.sh # 域名 + certbot HTTPS
+```
+
+**可覆盖变量**：
+
+| 变量 | 缺省 | 说明 |
+| --- | --- | --- |
+| `DOMAIN` | 本机 IP | 对外域名；IP 时跳过 SSL |
+| `SSL` | `0` | `1` 时用 certbot 自动签发 HTTPS |
+| `APP_ORIGIN` | `http://$DOMAIN` | 前端来源校验（CORS/CSRF） |
+| `ALLOWED_EMAIL_DOMAINS` | `example.edu.cn` | 注册邮箱域名白名单 |
+| `ADMIN_PASSWORD` / `DEV_PASSWORD` | 随机生成并打印 | 内置账号密码 |
+
+**流程**：检查环境 → 解析变量 → `pnpm install` → 生成 `backend/.env`（已存在则保留）→ 构建前后端 → `pm2` 启动 `samryetha-backend` / `samryetha-frontend`（`pm2 save`）→ 写 nginx 反代 → 可选 SSL → 健康检查。
+
+**nginx 只转发到前端 3000**：前端 `server.mjs` 生产模式自带 `/api` 代理到后端 3001，因此后端端口不对外暴露。SSE 经 `proxy_buffering off` 透传。
+
+**安全提醒**：生产务必在 `backend/.env` 覆盖 `STORAGE_SECRET`、内置账号密码；`COOKIE_SECURE=true`（脚本已默认）。数据库迁移与内置账号在服务启动时自动完成。
+
+## 7. 部署与扩展方向
 
 - 数据库换 PG：`infrastructure/db` 换 drizzle 的 pg 方言 + 迁移脚本；`node:sqlite` adapter 丢弃。
 - 缓存/在线/限频：实现 `CacheProvider` / `PresenceStore` / `RateLimiter` 的 Redis 版。

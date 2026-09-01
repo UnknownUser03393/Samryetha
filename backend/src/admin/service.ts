@@ -85,6 +85,7 @@ export interface AdminService {
     input: { status: "active" | "deactivated"; reason?: string },
   ): Promise<AdminUserDTO>;
   verifyUser(actor: Actor, targetId: number): Promise<AdminUserDTO>;
+  deleteUser(actor: Actor, targetId: number, reason?: string): Promise<void>;
   listDeletedContent(
     actor: Actor,
     opts: { discussionCursor?: number; replyCursor?: number; limit?: number },
@@ -245,10 +246,11 @@ export function createAdminService(db: DbProvider, c: AuthzCtx, opts: { presence
       if (opts.role) conds.push(eq(users.role, opts.role));
       if (opts.cursor) conds.push(lt(users.id, opts.cursor));
 
+      conds.push(isNull(users.deleted_at));
       const rows = await db.db
         .select()
         .from(users)
-        .where(conds.length ? and(...conds) : undefined)
+        .where(and(...conds))
         .orderBy(desc(users.id))
         .limit(limit + 1);
       const hasMore = rows.length > limit;
@@ -349,6 +351,35 @@ export function createAdminService(db: DbProvider, c: AuthzCtx, opts: { presence
       });
       const fresh = await loadAdminUser(targetId);
       return fresh!;
+    },
+
+    async deleteUser(actor, targetId, reason) {
+      await assertCan(actor, Abilities.adminUserDelete, null, c);
+      const target = await db.db.select().from(users).where(eq(users.id, targetId)).get();
+      if (!target) throw notFound("User not found");
+      if (target.id === actor?.id) throw conflict("Cannot delete your own account");
+      if (target.deleted_at) throw conflict("User is already deleted");
+      const now = new Date();
+      await db.tx(async (tx) => {
+        await tx.update(users).set({
+          deleted_at: now,
+          status: "deactivated",
+          username: `deleted-${target.id}`,
+          email: `deleted-${target.id}@samryetha.local`,
+          display_name: "Deleted user",
+          bio: "",
+          avatar_object_key: null,
+          updated_at: now,
+        }).where(eq(users.id, targetId));
+        await tx.delete(sessions).where(eq(sessions.user_id, targetId));
+        await tx.insert(moderationActions).values({
+          actor_user_id: actor!.id,
+          action: "user.delete",
+          target_type: "user",
+          target_id: targetId,
+          reason: reason ?? null,
+        });
+      });
     },
 
     async listDeletedContent(actor, opts) {

@@ -21,9 +21,18 @@ export async function ensureBuiltInAccounts(
   ];
   for (const { username, password } of accounts) {
     const existing = await db.db.select({ id: users.id }).from(users).where(eq(users.username, username)).get();
-    if (existing) continue;
-
     const passwordHash = await hash(password, { algorithm: Algorithm.Argon2id });
+
+    if (existing) {
+      await db.db.update(users).set({
+        password_hash: passwordHash,
+        role: "admin",
+        status: "active",
+        email_verified_at: new Date(),
+      }).where(eq(users.id, existing.id));
+      continue;
+    }
+
     const discriminator = await nextDiscriminator(db);
     await db.db.insert(users).values({
       username,

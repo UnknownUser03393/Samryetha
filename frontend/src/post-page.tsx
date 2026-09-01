@@ -1,5 +1,6 @@
-import { FormEvent, useEffect, useRef, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { AppShell } from "./app-shell";
+import { SDropdown } from "./s-dropdown";
 import { api, ApiError, type BoardSummary } from "./lib/api";
 import { useAuth } from "./lib/auth";
 
@@ -9,11 +10,9 @@ export function PostPage({ onPublished }: { onPublished: (id: number) => void })
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
   const [selectedBoard, setSelectedBoard] = useState<BoardSummary | null>(null);
-  const [boardOpen, setBoardOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [hint, setHint] = useState<string | null>(null);
-  const boardPickerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     api.boards
@@ -25,28 +24,6 @@ export function PostPage({ onPublished }: { onPublished: (id: number) => void })
       .catch(() => undefined);
   }, []);
 
-  useEffect(() => {
-    if (!boardOpen) return;
-    const closeOutside = (event: PointerEvent) => {
-      if (!boardPickerRef.current?.contains(event.target as Node)) setBoardOpen(false);
-    };
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setBoardOpen(false);
-    };
-    document.addEventListener("pointerdown", closeOutside);
-    document.addEventListener("keydown", closeOnEscape);
-    return () => {
-      document.removeEventListener("pointerdown", closeOutside);
-      document.removeEventListener("keydown", closeOnEscape);
-    };
-  }, [boardOpen]);
-
-  const moveBoard = (direction: -1 | 1) => {
-    if (boards.length === 0 || !selectedBoard) return;
-    const current = boards.findIndex((option) => option.slug === selectedBoard.slug);
-    setSelectedBoard(boards[(current + direction + boards.length) % boards.length]);
-    setBoardOpen(true);
-  };
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -99,41 +76,15 @@ export function PostPage({ onPublished }: { onPublished: (id: number) => void })
                   <small>{title.length}/100</small>
                 </label>
 
-                <div className="form-field compact-field board-picker" ref={boardPickerRef}>
-                  <span className="sr-only">Board</span>
-                  <button
-                    className={`board-select ${boardOpen ? "open" : ""}`}
-                    type="button"
-                    aria-label="Board"
-                    aria-haspopup="listbox"
-                    aria-expanded={boardOpen}
-                    aria-controls="board-options"
-                    onClick={() => setBoardOpen((open) => !open)}
-                    onKeyDown={(event) => {
-                      if (event.key === "ArrowDown") { event.preventDefault(); moveBoard(1); }
-                      if (event.key === "ArrowUp") { event.preventDefault(); moveBoard(-1); }
-                    }}
-                  >
-                    <span>{selectedBoard?.name ?? "Choose a board"}</span>
-                    <span className="board-chevron" aria-hidden="true" />
-                  </button>
-                  <div className={`board-options ${boardOpen ? "open" : ""}`} id="board-options" role="listbox" aria-label="Board" aria-hidden={!boardOpen}>
-                    {boards.map((option) => (
-                      <button
-                        className={`board-option ${selectedBoard?.slug === option.slug ? "selected" : ""}`}
-                        key={option.slug}
-                        type="button"
-                        role="option"
-                        tabIndex={boardOpen ? 0 : -1}
-                        aria-selected={selectedBoard?.slug === option.slug}
-                        onClick={() => { setSelectedBoard(option); setBoardOpen(false); }}
-                      >
-                        <span>{option.name}</span>
-                        {selectedBoard?.slug === option.slug && <span className="board-option-mark" aria-hidden="true" />}
-                      </button>
-                    ))}
-                  </div>
-                </div>
+                <SDropdown
+                  items={boards}
+                  value={selectedBoard}
+                  onChange={setSelectedBoard}
+                  getKey={(board) => board.slug}
+                  getLabel={(board) => board.name}
+                  placeholder="Choose a board"
+                  ariaLabel="Board"
+                />
               </div>
 
               <label className="form-field body-field">
