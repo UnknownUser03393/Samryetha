@@ -36,10 +36,17 @@ function cookieOptions(container: Container) {
 export function registerAuthModule(app: FastifyInstance, container: Container): void {
   const { auth } = container;
 
+  // 登录/注册限流：生产/开发收紧（防暴力破解/批量注册），测试环境放宽以免拖慢测试套件
+  // Auth rate limit: strict in prod/dev (anti brute-force / mass-registration), relaxed in tests to avoid slowing the suite
+  const authRateLimit = container.env.NODE_ENV === "test"
+    ? { max: 1_000_000, timeWindow: "1 minute" }
+    : { max: 10, timeWindow: "1 minute" };
+
   app.route({
     method: "POST",
     url: "/api/auth/register",
     schema: { body: registerBody },
+    config: { rateLimit: authRateLimit },
     handler: async (request: BodyRequest<typeof registerBody>, reply) => {
       const { userId } = await auth.register(request.body);
       return reply.code(201).send({ userId, message: "pending" });
@@ -50,6 +57,7 @@ export function registerAuthModule(app: FastifyInstance, container: Container): 
     method: "POST",
     url: "/api/auth/login",
     schema: { body: loginBody },
+    config: { rateLimit: authRateLimit },
     handler: async (request: BodyRequest<typeof loginBody>, reply) => {
       const result = await auth.login(request.body.username, request.body.password, {
         ip: request.ip,

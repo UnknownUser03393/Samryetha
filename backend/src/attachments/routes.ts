@@ -75,6 +75,11 @@ export function registerAttachmentRoutes(app: FastifyInstance, container: Contai
       const declared = Number(request.headers["content-length"] ?? 0);
       if (declared > MAX_UPLOAD_BYTES) throw badRequest("File too large");
 
+      // 按 presign 时声明的 size_bytes 收紧上限，防止客户端绕过声明体积上传超大文件
+      // Enforce the size declared at presign time to prevent uploading larger than declared
+      const row = await container.db.db.select().from(attachments).where(eq(attachments.object_key, objectKey)).get();
+      if (row && declared > row.size_bytes) throw badRequest("File too large");
+
       const full = path.join(container.env.UPLOAD_DIR, objectKey);
       if (!path.resolve(full).startsWith(path.resolve(container.env.UPLOAD_DIR))) {
         throw forbidden("Invalid object key");

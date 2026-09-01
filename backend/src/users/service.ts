@@ -1,3 +1,4 @@
+import { randomInt } from "node:crypto";
 import { and, count, eq, isNull, ne } from "drizzle-orm";
 import type { DbProvider } from "../infrastructure/db/client.js";
 import {
@@ -21,7 +22,7 @@ export function makeHandle(username: string, discriminator: number | null | unde
 /** 随机 4 位身份号（1000-9999），全局唯一，撞了重抽。 */
 export async function nextDiscriminator(db: DbProvider): Promise<number> {
   for (let attempt = 0; attempt < 50; attempt++) {
-    const candidate = 1000 + Math.floor(Math.random() * 9000);
+    const candidate = randomInt(1000, 10000);
     const exists = await db.db.select().from(users).where(eq(users.discriminator, candidate)).get();
     if (!exists) return candidate;
   }
