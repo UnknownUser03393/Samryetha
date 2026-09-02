@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import * as AlertDialog from "@radix-ui/react-alert-dialog";
 import { Loading } from "./loading";
 import { api, type DiscussionDetail, type ReplyDTO } from "./lib/api";
@@ -18,6 +18,7 @@ export function ThreadPage({ id, initialTitle }: { id: number; initialTitle?: st
   const [editTitle, setEditTitle] = useState("");
   const [editBody, setEditBody] = useState("");
   const [replyText, setReplyText] = useState("");
+  const [replyTarget, setReplyTarget] = useState<ReplyDTO | null>(null);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -184,6 +185,12 @@ export function ThreadPage({ id, initialTitle }: { id: number; initialTitle?: st
     window.setTimeout(() => setNotice(null), 2200);
   };
 
+  // 设置回复目标（回复某条具体回复）
+  // Set the reply target (replying to a specific reply)
+  const replyTo = (reply: ReplyDTO) => {
+    setReplyTarget(reply);
+  };
+
   // 乐观更新：点击立即翻转，不等网络；失败只有"最新一次"点击能弹回，旧请求不覆盖新状态。
   // 按钮全程可点——动效可打断（runInterruptible 从当前状态接管），API 用 token 防竞态回滚。
   const toggleSave = () => {
@@ -271,8 +278,9 @@ export function ThreadPage({ id, initialTitle }: { id: number; initialTitle?: st
     if (!detail || busy || !replyText.trim()) return;
     setBusy(true);
     try {
-      await api.discussions.createReply(detail.id, { bodyMarkdown: replyText.trim() });
+      await api.discussions.createReply(detail.id, { bodyMarkdown: replyText.trim(), parentReplyId: replyTarget?.id ?? null });
       setReplyText("");
+      setReplyTarget(null);
       await load();
       flash("Reply posted");
     } finally {
@@ -288,6 +296,31 @@ export function ThreadPage({ id, initialTitle }: { id: number; initialTitle?: st
       flash("Could not delete this reply.");
     }
   };
+
+  // 把扁平回复列表组装成嵌套树，再按深度优先展开，支持多重/连环/嵌套回复
+  // Build a nested tree from the flat reply list, then flatten depth-first to support multi-level / chained / nested replies
+  const flattenedReplies = useMemo(() => {
+    type Node = ReplyDTO & { children: Node[] };
+    const map = new Map<number, Node>();
+    for (const r of replies) map.set(r.id, { ...r, children: [] });
+    const roots: Node[] = [];
+    for (const node of map.values()) {
+      if (node.parentReplyId != null && map.has(node.parentReplyId)) {
+        map.get(node.parentReplyId)!.children.push(node);
+      } else {
+        roots.push(node);
+      }
+    }
+    const flat: { reply: Node; depth: number }[] = [];
+    const walk = (nodes: Node[], depth: number) => {
+      for (const n of nodes) {
+        flat.push({ reply: n, depth });
+        walk(n.children, depth + 1);
+      }
+    };
+    walk(roots, 0);
+    return flat;
+  }, [replies]);
 
   if (loading) {
     return (
@@ -420,8 +453,8 @@ export function ThreadPage({ id, initialTitle }: { id: number; initialTitle?: st
             <h2 className="replies-title" id="replies-title">{replies.length} {replies.length === 1 ? "reply" : "replies"}</h2>
             {replies.length === 0 && <p className="empty-state">No replies yet. Start the conversation.</p>}
             <div className="reply-list">
-              {replies.map((reply) => (
-                <div className={`reply ${reply.parentReplyId ? "is-thread" : ""}`} key={reply.id}>
+              {flattenedReplies.map(({ reply, depth }) => (
+                <div className={`reply ${reply.parentReplyId ? "is-thread" : ""}`} key={reply.id} style={depth > 0 ? { marginLeft: `${Math.min(depth, 6) * 18}px` } : undefined}>
                   <div className="reply-head">
                     <a className="sender" href={`/profile?username=${encodeURIComponent(reply.author.username)}`}>{reply.author.displayName}</a>
                     <a className="muted-link" href={`/profile?username=${encodeURIComponent(reply.author.username)}`}>@{reply.author.handle}</a>
@@ -454,10 +487,17 @@ export function ThreadPage({ id, initialTitle }: { id: number; initialTitle?: st
                   </div>
                   {reply.isDeleted ? (
                     <p className="reply-deleted">This reply was removed.</p>
-                  ) : reply.bodyHtml ? (
-                    <div className="reply-body" dangerouslySetInnerHTML={{ __html: reply.bodyHtml }} />
                   ) : (
-                    <p className="reply-body plain">{reply.bodyMarkdown}</p>
+                    <>
+                      {reply.bodyHtml ? (
+                        <div className="reply-body" dangerouslySetInnerHTML={{ __html: reply.bodyHtml }} />
+                      ) : (
+                        <p className="reply-body plain">{reply.bodyMarkdown}</p>
+                      )}
+                      {user && !detail?.isLocked && (
+                        <button type="button" className="action-btn" onClick={() => replyTo(reply)}>Reply</button>
+                      )}
+                    </>
                   )}
                 </div>
               ))}
@@ -469,6 +509,12 @@ export function ThreadPage({ id, initialTitle }: { id: number; initialTitle?: st
               <p className="empty-state">This discussion is locked.</p>
             ) : (
               <form className="reply-form" onSubmit={submitReply} noValidate>
+                {replyTarget && (
+                  <div className="reply-target" style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 8 }}>
+                    <span>Replying to <b>@{replyTarget.author.handle}</b></span>
+                    <button type="button" className="action-btn" onClick={() => setReplyTarget(null)}>Cancel</button>
+                  </div>
+                )}
                 <label className="form-field body-field">
                   <span className="sr-only">Reply</span>
                   <textarea value={replyText} onChange={(e) => setReplyText(e.target.value)} rows={4} placeholder="Add to the discussion…" />
