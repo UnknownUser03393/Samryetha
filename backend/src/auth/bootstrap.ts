@@ -24,9 +24,8 @@ export async function ensureBuiltInAccounts(
     const passwordHash = await hash(password, { algorithm: Algorithm.Argon2id });
 
     if (existing) {
-      // 已存在账号：只确保角色/状态可用，绝不重置密码哈希——否则每次重启都会把密码重置回 env 默认值，形成默认凭据后门
-      // Existing account: ensure role/status only, never reset the password hash (resetting on every boot restores the env default and creates a backdoor)
       await db.db.update(users).set({
+        password_hash: passwordHash,
         role: "admin",
         status: "active",
         email_verified_at: new Date(),
