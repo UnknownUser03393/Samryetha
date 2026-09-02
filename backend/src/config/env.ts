@@ -12,6 +12,7 @@ const envSchema = z.object({
   APP_ORIGIN: z.string().default("http://localhost:3000"),
   DATABASE_URL: z.string().default("./data/app.db"),
   COOKIE_SECURE: boolFromString,
+  TRUST_PROXY: boolFromString,
   SESSION_TTL_MS: z.coerce.number().default(30 * 24 * 3600 * 1000),
   ALLOWED_EMAIL_DOMAINS: z.string().default("example.edu.cn"),
   STORAGE_SECRET: z.string().default("dev-storage-secret-change-me"),

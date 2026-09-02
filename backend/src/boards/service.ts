@@ -33,16 +33,23 @@ export interface BoardInput {
   postingPolicy?: PostingPolicy;
 }
 
+/** 板块可见性判定所需的最小 viewer 信息 */
+// Minimal viewer info required for board visibility checks
+export interface BoardViewer {
+  id: number;
+  role: string;
+}
+
 export interface BoardService {
-  listBoards(viewerId: number | null): Promise<BoardSummary[]>;
-  getBoard(viewerId: number | null, slug: string): Promise<BoardSummary>;
+  listBoards(viewer: BoardViewer | null): Promise<BoardSummary[]>;
+  getBoard(viewer: BoardViewer | null, slug: string): Promise<BoardSummary>;
   getBoardForAuthz(slug: string): Promise<{ id: number; visibility: BoardVisibility; postingPolicy: PostingPolicy } | undefined>;
   createBoard(actorId: number, input: BoardInput): Promise<BoardSummary>;
   updateBoard(actorId: number, slug: string, patch: Partial<BoardInput>): Promise<BoardSummary>;
   deleteBoard(actorId: number, slug: string, reason?: string): Promise<void>;
   joinBoard(userId: number, slug: string): Promise<void>;
   leaveBoard(userId: number, slug: string): Promise<void>;
-  listMembers(slug: string): Promise<{ id: number; username: string; handle: string; displayName: string; role: string }[]>;
+  listMembers(viewer: BoardViewer | null, slug: string): Promise<{ id: number; username: string; handle: string; displayName: string; role: string }[]>;
   updateMemberRole(actorId: number, slug: string, userId: number, role: "member" | "moderator"): Promise<void>;
 }
 
@@ -86,16 +93,31 @@ export function createBoardService(db: DbProvider): BoardService {
     return db.db.select().from(boards).where(and(eq(boards.slug, slug), isNull(boards.deleted_at))).get();
   }
 
+  // 按 viewer 过滤可见板块：全局 mod/admin 全见，其余仅 public 或本人加入的板块
+  // Filter boards by viewer: global mod/admin see all, others see public boards plus boards they joined
+  async function visibleBoardRows(viewer: BoardViewer | null): Promise<BoardRow[]> {
+    const rows = await db.db.select().from(boards).where(isNull(boards.deleted_at));
+    if (viewer && (viewer.role === "admin" || viewer.role === "moderator")) return rows;
+    let memberIds = new Set<number>();
+    if (viewer) {
+      const memberRows = await db.db.select().from(boardMembers).where(eq(boardMembers.user_id, viewer.id));
+      memberIds = new Set(memberRows.map((m) => m.board_id));
+    }
+    return rows.filter((b) => b.visibility === "public" || memberIds.has(b.id));
+  }
+
   return {
-    async listBoards(viewerId) {
-      const rows = await db.db.select().from(boards).where(isNull(boards.deleted_at)).orderBy(boards.name);
-      return Promise.all(rows.map((b) => loadSummary(b, viewerId)));
+    async listBoards(viewer) {
+      const rows = await visibleBoardRows(viewer);
+      return Promise.all(rows.map((b) => loadSummary(b, viewer?.id ?? null)));
     },
 
-    async getBoard(viewerId, slug) {
+    async getBoard(viewer, slug) {
       const board = await getBySlug(slug);
       if (!board) throw notFound("Board not found");
-      return loadSummary(board, viewerId);
+      const visible = await visibleBoardRows(viewer);
+      if (!visible.some((b) => b.id === board.id)) throw notFound("Board not found");
+      return loadSummary(board, viewer?.id ?? null);
     },
 
     async getBoardForAuthz(slug) {
@@ -172,9 +194,11 @@ export function createBoardService(db: DbProvider): BoardService {
         .where(and(eq(boardMembers.board_id, board.id), eq(boardMembers.user_id, userId)));
     },
 
-    async listMembers(slug) {
+    async listMembers(viewer, slug) {
       const board = await getBySlug(slug);
       if (!board) throw notFound("Board not found");
+      const visible = await visibleBoardRows(viewer);
+      if (!visible.some((b) => b.id === board.id)) throw notFound("Board not found");
       const rows = await db.db
         .select({
           id: users.id,
