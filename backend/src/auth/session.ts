@@ -12,14 +12,14 @@ export function hashToken(token: string): string {
   return createHash("sha256").update(token).digest("hex");
 }
 
-const SESSION_TTL_MS = 30 * 24 * 3600 * 1000;
-
-export function createSessionToken(ttlMs: number = SESSION_TTL_MS): { token: string; expiresAt: Date } {
+export function createSessionToken(): { token: string; expiresAt: Date } {
   return {
     token: randomBytes(32).toString("base64url"),
-    expiresAt: new Date(Date.now() + ttlMs),
+    expiresAt: new Date(Date.now() + SESSION_TTL_MS),
   };
 }
+
+const SESSION_TTL_MS = 30 * 24 * 3600 * 1000;
 
 export async function createSession(
   db: DbProvider,
@@ -27,7 +27,7 @@ export async function createSession(
   ctx: { ip?: string; userAgent?: string },
   ttlMs: number = SESSION_TTL_MS,
 ): Promise<{ token: string; expiresAt: Date }> {
-  const { token, expiresAt } = createSessionToken(ttlMs);
+  const { token, expiresAt } = createSessionToken();
   await db.db.insert(sessions).values({
     token_hash: hashToken(token),
     user_id: userId,

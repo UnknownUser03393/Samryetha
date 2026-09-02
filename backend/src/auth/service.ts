@@ -38,11 +38,6 @@ export function createAuthService(
   env: Env,
 ): AuthService {
   async function register(input: RegisterInput) {
-    // 内测期走假邮箱注册，尚未校验 ALLOWED_EMAIL_DOMAINS；生产环境打印醒目告警
-    // Internal-test registration uses fake emails and does not enforce ALLOWED_EMAIL_DOMAINS yet; warn loudly in production
-    if (env.NODE_ENV === "production") {
-      console.warn("[auth] WARNING: registration uses internal fake email (samryetha.local); ALLOWED_EMAIL_DOMAINS is not enforced");
-    }
     const username = normalizeUsername(input.username);
     const existing = await db.db.select().from(usersTable).where(eq(usersTable.username, username)).get();
     if (existing) throw conflict("That username is already taken");

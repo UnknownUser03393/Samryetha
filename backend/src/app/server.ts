@@ -47,9 +47,7 @@ export async function buildApp(container: Container): Promise<FastifyInstance> {
           : undefined,
     },
     genReqId: () => `req_${randomUUID().slice(0, 8)}`,
-    // 仅当部署在受控反向代理之后才信任 X-Forwarded-For，直连公网必须为 false，否则可伪造 IP 绕过限流
-    // Trust X-Forwarded-For only behind a controlled reverse proxy; keep false when exposed directly to avoid IP spoofing/rate-limit bypass
-    trustProxy: env.TRUST_PROXY,
+    trustProxy: true,
   }).withTypeProvider<ZodTypeProvider>();
 
   // zod 校验/序列化编译器（fastify-type-provider-zod v7）

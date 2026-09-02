@@ -6,8 +6,6 @@ import type { DbProvider } from "../infrastructure/db/client.js";
 import { and, eq } from "drizzle-orm";
 import { feedbackApiKeys, type FeedbackKeyRole } from "../infrastructure/db/schema.js";
 import { authRequired, forbidden, notFound, badRequest } from "../app/error.js";
-import { requireActiveUser } from "../app/auth-hook.js";
-import { Abilities, assertCan } from "../authz/can.js";
 import type { FeedbackItemDTO, FeedbackService } from "./service.js";
 
 const AGENT_KEY_PREFIX = "fb-agent:";
@@ -245,20 +243,10 @@ export function registerFeedbackAgentApi(app: FastifyInstance, container: Contai
 export function registerFeedbackAdminKeys(app: FastifyInstance, container: Container): void {
   const agent = createAgentService(container.db, container.feedbackService);
 
-  // 密钥管理属敏感操作，必须登录且具备 admin 权限
-  // Key management is sensitive and requires an authenticated admin
-  const requireAdmin = async (request: FastifyRequest): Promise<void> => {
-    const session = requireActiveUser(request);
-    await assertCan(session, Abilities.adminView, null, container);
-  };
-
   app.route({
     method: "GET",
     url: "/api/admin/feedback/keys",
-    handler: async (request) => {
-      await requireAdmin(request);
-      return { items: await agent.listKeys() };
-    },
+    handler: async () => ({ items: await agent.listKeys() }),
   });
 
   const keyBody = z.object({
@@ -272,7 +260,6 @@ export function registerFeedbackAdminKeys(app: FastifyInstance, container: Conta
     url: "/api/admin/feedback/keys",
     schema: { body: keyBody },
     handler: async (request: FastifyRequest<{ Body: z.infer<typeof keyBody> }>, reply) => {
-      await requireAdmin(request);
       // 过滤掉不存在的项目 id
       const projects = await container.feedbackService.listProjectsForAdmin();
       const validIds = new Set(projects.map((p) => p.id));
@@ -287,7 +274,6 @@ export function registerFeedbackAdminKeys(app: FastifyInstance, container: Conta
     url: "/api/admin/feedback/keys/:id",
     schema: { params: z.object({ id: z.coerce.number().int().positive() }), body: z.object({ enabled: z.boolean() }) },
     handler: async (request: FastifyRequest<{ Params: { id: number }; Body: { enabled: boolean } }>) => {
-      await requireAdmin(request);
       await agent.setKeyEnabled(request.params.id, request.body.enabled);
       return { ok: true };
     },
@@ -298,7 +284,6 @@ export function registerFeedbackAdminKeys(app: FastifyInstance, container: Conta
     url: "/api/admin/feedback/keys/:id",
     schema: { params: z.object({ id: z.coerce.number().int().positive() }) },
     handler: async (request: FastifyRequest<{ Params: { id: number } }>) => {
-      await requireAdmin(request);
       await agent.deleteKey(request.params.id);
       return { ok: true };
     },

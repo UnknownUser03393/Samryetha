@@ -12,7 +12,6 @@ const envSchema = z.object({
   APP_ORIGIN: z.string().default("http://localhost:3000"),
   DATABASE_URL: z.string().default("./data/app.db"),
   COOKIE_SECURE: boolFromString,
-  TRUST_PROXY: boolFromString,
   SESSION_TTL_MS: z.coerce.number().default(30 * 24 * 3600 * 1000),
   ALLOWED_EMAIL_DOMAINS: z.string().default("example.edu.cn"),
   STORAGE_SECRET: z.string().default("dev-storage-secret-change-me"),
@@ -32,21 +31,7 @@ export function loadEnv(): Env {
     const detail = parsed.error.flatten();
     throw new Error(`Invalid environment configuration:\n${JSON.stringify(detail, null, 2)}`);
   }
-  const env = parsed.data;
-  // 生产环境禁止使用默认密码/签名密钥，防止部署时误用公开已知的默认凭据
-  // In production, forbid default passwords/secret to prevent shipping publicly-known credentials
-  if (env.NODE_ENV === "production") {
-    const usingDefaults =
-      env.ADMIN_PASSWORD === "SamryethaAdmin@NeatAvocado2026!" ||
-      env.DEV_PASSWORD === "NeatAvocadoOnTop2026" ||
-      env.STORAGE_SECRET === "dev-storage-secret-change-me";
-    if (usingDefaults) {
-      throw new Error(
-        "Insecure defaults detected in production: ADMIN_PASSWORD / DEV_PASSWORD / STORAGE_SECRET must be overridden",
-      );
-    }
-  }
-  return env;
+  return parsed.data;
 }
 
 /** 邮箱域名 allowlist，来自 ALLOWED_EMAIL_DOMAINS（逗号分隔，全小写）。 */

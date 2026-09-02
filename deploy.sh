@@ -86,7 +86,6 @@ else
 NODE_ENV=production
 APP_ORIGIN=$APP_ORIGIN
 COOKIE_SECURE=$([ "$SSL" = "1" ] && printf 'true' || printf 'false')
-TRUST_PROXY=true
 ALLOWED_EMAIL_DOMAINS=$ALLOWED_EMAIL_DOMAINS
 STORAGE_SECRET=$(openssl rand -hex 32)
 ADMIN_PASSWORD=$ADMIN_PASSWORD
