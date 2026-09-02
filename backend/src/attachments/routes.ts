@@ -7,8 +7,9 @@ import { eq } from "drizzle-orm";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import type { Container } from "../app/container.js";
 import { requireActiveUser, requireUser } from "../app/auth-hook.js";
-import { badRequest, forbidden } from "../app/error.js";
+import { badRequest, forbidden, notFound } from "../app/error.js";
 import { attachments } from "../infrastructure/db/schema.js";
+import { ALLOWED_MIME_TYPES, contentTypeForObjectKey } from "../infrastructure/storage/local.js";
 
 const presignBody = z.object({
   filename: z.string().min(1).max(255),
@@ -36,6 +37,9 @@ export function registerAttachmentRoutes(app: FastifyInstance, container: Contai
     schema: { body: presignBody },
     handler: async (request: FastifyRequest<{ Body: z.infer<typeof presignBody> }>) => {
       const session = requireActiveUser(request);
+      if (!ALLOWED_MIME_TYPES.has(request.body.mimeType)) {
+        throw badRequest("Unsupported content type");
+      }
       return attachmentService.presign(session, request.body);
     },
   });
@@ -101,7 +105,10 @@ export function registerAttachmentRoutes(app: FastifyInstance, container: Contai
         throw forbidden("Invalid or expired download signature");
       }
       const meta = await container.db.db.select().from(attachments).where(eq(attachments.object_key, objectKey)).get();
-      const mime = meta?.mime_type ?? "application/octet-stream";
+      if (!meta) throw notFound("Attachment not found");
+      // 不信任客户端声明的 mimeType，按 objectKey 扩展名推导，杜绝 text/html 内联渲染导致存储型 XSS
+      // Do not trust the client-declared mimeType: derive from the objectKey extension to block inline text/html (stored XSS)
+      const mime = contentTypeForObjectKey(objectKey);
       const full = path.join(container.env.UPLOAD_DIR, objectKey);
       if (!path.resolve(full).startsWith(path.resolve(container.env.UPLOAD_DIR))) {
         throw forbidden("Invalid object key");
