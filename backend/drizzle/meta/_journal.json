@@ -1,0 +1,41 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "6",
+      "when": 1788021090677,
+      "tag": "0000_outgoing_doctor_faustus",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1788180669985,
+      "tag": "0001_typical_brother_voodoo",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1788184283276,
+      "tag": "0002_past_tinkerer",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1788263618367,
+      "tag": "0003_cultured_baron_strucker",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1788263663005,
+      "tag": "0004_exotic_peter_quill",
+      "breakpoints": true
+    }
+  ]
+}

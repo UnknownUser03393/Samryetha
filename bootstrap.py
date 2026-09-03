@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Samryetha 开发环境一键引导（Python/FastAPI 后端 + React 前端）。
+"""Samryetha 开发环境一键引导。
 
 用法：
-    python bootstrap.py                # 检查环境 + 装依赖 + 生成 .env
+    python bootstrap.py                # 检查环境 + 装依赖 + 生成 .env + 迁移 + 种子数据
     python bootstrap.py --dev          # 以上全部，再同时启动前后端 dev server
     python bootstrap.py --skip-install --dev   # 依赖装过了，直接起服务
+    python bootstrap.py --skip-db      # 跳过迁移和种子数据
 
-说明：后端为 Python(FastAPI)，SQLite 存量库直接打开无需迁移；内建 admin/dev
-账号在服务启动时幂等确保。前端仍为 Node/React（vite SSR）。
+任一命令失败即以非零码退出。
 """
 
 from __future__ import annotations
@@ -26,6 +26,7 @@ BACKEND = ROOT / "backend"
 FRONTEND = ROOT / "frontend"
 
 IS_WINDOWS = platform.system() == "Windows"
+MIN_NODE_MAJOR = 20
 
 
 def run(cmd: list[str], cwd: Path, check: bool = True) -> bool:
@@ -39,6 +40,7 @@ def run(cmd: list[str], cwd: Path, check: bool = True) -> bool:
 
 
 def capture(cmd: list[str]) -> str:
+    """跑命令并抓 stdout，用于版本探测。"""
     joined = " ".join(cmd) if IS_WINDOWS else cmd
     proc = subprocess.run(joined if IS_WINDOWS else cmd, shell=IS_WINDOWS,
                           capture_output=True, text=True)
@@ -47,28 +49,22 @@ def capture(cmd: list[str]) -> str:
 
 def check_prereqs() -> None:
     print("==> 检查环境")
-    missing = []
-    if shutil.which("uv") is None:
-        missing.append("uv")
-    if shutil.which("python") is None and shutil.which("python3") is None:
-        missing.append("python")
-    # 前端
-    if shutil.which("node") is None:
-        missing.append("node")
-    if shutil.which("pnpm") is None:
-        missing.append("pnpm")
+    missing = [name for name in ("node", "pnpm") if shutil.which(name) is None]
     if missing:
-        sys.exit(f"[x] 缺少工具: {', '.join(missing)}，请先安装")
-    uv_out = capture(["uv", "--version"]) or "?"
-    node_out = capture(["node", "--version"]) or "?"
-    print(f"[ok] uv {uv_out} / node {node_out} / pnpm {capture(['pnpm', '--version'])}")
+        sys.exit(f"[x] 缺少工具: {', '.join(missing)}，请先安装 node 和 pnpm")
+
+    node_out = capture(["node", "--version"]) or "v0"
+    major = int(node_out.lstrip("vV").split(".")[0] or 0)
+    if major < MIN_NODE_MAJOR:
+        sys.exit(f"[x] 需要 Node >= {MIN_NODE_MAJOR}，当前 {node_out}")
+    pnpm_out = capture(["pnpm", "--version"]) or "?"
+    print(f"[ok] node {node_out} / pnpm {pnpm_out}")
 
 
 def install() -> None:
-    print("\n==> 安装后端依赖 (uv sync)")
-    run(["uv", "sync"], BACKEND)
-    print("\n==> 安装前端依赖 (pnpm install)")
-    run(["pnpm", "install"], FRONTEND)
+    for d in (BACKEND, FRONTEND):
+        print(f"\n==> 安装依赖 [{d.name}]")
+        run(["pnpm", "install"], d)
 
 
 def setup_env() -> None:
@@ -81,7 +77,15 @@ def setup_env() -> None:
         return
     shutil.copyfile(example, target)
     print("[+] 已从 .env.example 生成 backend/.env")
-    print("    （上线前记得改 ADMIN_PASSWORD / DEV_PASSWORD / STORAGE_SECRET）")
+    print("    （上线前记得改 ALLOWED_EMAIL_DOMAINS / STORAGE_SECRET）")
+
+
+def db() -> None:
+    # 迁移不需要单独跑 drizzle-kit：本项目用 node:sqlite 内置驱动（sqlite-proxy），
+    # server 与 seed 启动时都会自动执行 ./drizzle 下的迁移（runMigrations 默认开启）。
+    # drizzle-kit migrate 反而需要 better-sqlite3 驱动，项目不装，会直接报错。
+    print("\n==> 写入种子数据（会自动执行迁移）")
+    run(["pnpm", "seed"], BACKEND)
 
 
 def start_dev() -> None:
@@ -93,8 +97,8 @@ def start_dev() -> None:
         procs.append(subprocess.Popen(joined if IS_WINDOWS else cmd,
                                       cwd=cwd, shell=IS_WINDOWS))
 
-    launch(["uv", "run", "python", "-m", "samryetha.main"], BACKEND, "backend  (http://localhost:3001)")
-    time.sleep(2)
+    launch(["pnpm", "dev"], BACKEND, "backend  (http://localhost:3001)")
+    time.sleep(1)
     launch(["pnpm", "dev"], FRONTEND, "frontend (http://localhost:3000)")
 
     print("\n  backend  -> http://localhost:3001")
@@ -121,13 +125,19 @@ def start_dev() -> None:
 
 
 def main() -> None:
+    # Windows 下管道/重定向时 Python 默认按 GBK 输出，Git Bash / VS Code 终端按
+    # UTF-8 解码会乱码。强制 UTF-8 输出保持一致。
     for stream in (sys.stdout, sys.stderr):
         if hasattr(stream, "reconfigure"):
             stream.reconfigure(encoding="utf-8")
 
     parser = argparse.ArgumentParser(description="Samryetha 开发环境引导")
-    parser.add_argument("--dev", action="store_true", help="初始化完成后启动前后端 dev server")
-    parser.add_argument("--skip-install", action="store_true", help="跳过依赖安装")
+    parser.add_argument("--dev", action="store_true",
+                        help="初始化完成后启动前后端 dev server")
+    parser.add_argument("--skip-install", action="store_true",
+                        help="跳过 pnpm install")
+    parser.add_argument("--skip-db", action="store_true",
+                        help="跳过迁移与种子数据")
     args = parser.parse_args()
 
     print(f"Samryetha bootstrap @ {ROOT}\n")
@@ -136,6 +146,8 @@ def main() -> None:
     if not args.skip_install:
         install()
     setup_env()
+    if not args.skip_db:
+        db()
 
     print("\n[+] 环境就绪。")
     if args.dev:
