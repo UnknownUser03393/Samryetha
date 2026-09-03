@@ -80,6 +80,36 @@ def _on_reply_created(conn, payload: dict) -> list[dict]:
     return out
 
 
+def _on_mention_created(conn, payload: dict) -> list[dict]:
+    # @提及：给每个被 @ 的用户建 mention 通知并广播 SSE
+    # @mention: create a mention notification for each mentioned user and broadcast SSE
+    discussion_id = payload.get("discussionId")
+    reply_id = payload.get("replyId")
+    author_id = payload.get("authorId")
+    mentioned = payload.get("mentionedUsernames") or []
+    title = payload.get("title") or ""
+    if not mentioned or author_id is None:
+        return []
+    author_row = conn.execute(select(users).where(users.c.id == author_id)).first()
+    actor_name = author_row.display_name if author_row else "Someone"
+    out: list[dict] = []
+    for username in mentioned:
+        user_row = conn.execute(select(users).where(users.c.username == username)).first()
+        if user_row is None or user_row.id == author_id:
+            continue
+        notifications.create(
+            conn,
+            user_id=user_row.id,
+            actor_user_id=author_id,
+            type_="mention",
+            discussion_id=discussion_id,
+            reply_id=reply_id,
+            body=f'{actor_name} mentioned you in "{title}"',
+        )
+        out.extend(_publish(user_row.id))
+    return out
+
+
 def _on_user_followed(conn, payload: dict) -> list[dict]:
     follower_id = payload.get("followerId")
     followee_id = payload.get("followeeId")
@@ -120,6 +150,7 @@ def register_outbox_handlers(dispatcher: OutboxDispatcher, mailer=None) -> None:
 
         mailer = ConsoleMailer()
     dispatcher.on("reply.created", _on_reply_created)
+    dispatcher.on("mention.created", _on_mention_created)
     dispatcher.on("user.followed", _on_user_followed)
     dispatcher.on("user.banned", lambda conn, payload: _on_user_banned(conn, payload, mailer))
 

@@ -289,6 +289,22 @@ def get_discussion(conn: Connection, viewer, discussion_id: int) -> dict:
 # ---------------------------------------------------------------- write ops
 
 
+# 从 markdown 提取 @username（用于 @提及通知）
+# Extract @username mentions from markdown (for mention notifications)
+_MENTION_RE = re.compile(r"@([a-z0-9_]{3,30})", re.IGNORECASE)
+
+
+def extract_mentions(markdown: str) -> list[str]:
+    names: list[str] = []
+    seen: set[str] = set()
+    for m in _MENTION_RE.findall(markdown):
+        name = m.lower()
+        if name not in seen:
+            seen.add(name)
+            names.append(name)
+    return names
+
+
 def create_discussion(conn: Connection, actor, data: dict) -> dict:
     if actor is None:
         raise internal_error()
@@ -330,6 +346,21 @@ def create_discussion(conn: Connection, actor, data: dict) -> dict:
             "title": data["title"],
         },
     )
+    mentioned = extract_mentions(data["bodyMarkdown"])
+    if mentioned:
+        emit_event(
+            conn,
+            "mention.created",
+            aggregate_type="discussion",
+            aggregate_id=str(disc_id),
+            payload={
+                "discussionId": disc_id,
+                "replyId": None,
+                "authorId": actor.id,
+                "mentionedUsernames": mentioned,
+                "title": data["title"],
+            },
+        )
     return get_discussion(conn, actor, disc_id)
 
 
@@ -443,6 +474,21 @@ def create_reply(conn: Connection, actor, discussion_id: int, data: dict) -> dic
             "title": d["title"],
         },
     )
+    mentioned = extract_mentions(data["bodyMarkdown"])
+    if mentioned:
+        emit_event(
+            conn,
+            "mention.created",
+            aggregate_type="discussion",
+            aggregate_id=str(discussion_id),
+            payload={
+                "discussionId": discussion_id,
+                "replyId": reply_id,
+                "authorId": actor.id,
+                "mentionedUsernames": mentioned,
+                "title": d["title"],
+            },
+        )
     row = dict(
         conn.execute(select(replies).where(replies.c.id == reply_id)).first()._mapping
     )
