@@ -42,9 +42,10 @@ export function UserMenu({ current }: { current?: UserMenuLocation }) {
   };
 
   return (
-    <div className="user-menu" ref={menuRef}>
+    <div className="user-menu" ref={menuRef} onMouseEnter={() => setOpen(true)} onMouseLeave={() => setOpen(false)}>
       <button className={`icon-btn user-menu-trigger ${current ? "profile-current" : ""}`} type="button" aria-label="Account menu" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen((value) => !value)}>
         <ProfileIcon />
+        <span className="user-menu-name">{user.displayName}</span>
       </button>
       <div className={`user-menu-popover ${open ? "open" : ""}`} role="menu" aria-label="Account" aria-hidden={!open}>
         <a className="user-menu-profile" href="/profile" role="menuitem" tabIndex={open ? 0 : -1} onClick={() => setOpen(false)}>

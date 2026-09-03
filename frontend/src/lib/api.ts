@@ -98,6 +98,23 @@ export type NotificationDTO = {
   createdAt: number;
 };
 
+export type ConversationSummary = {
+  id: number;
+  otherUser: AuthorRef;
+  lastMessage: { body: string; senderId: number; createdAt: number } | null;
+  unreadCount: number;
+  lastMessageAt: number;
+};
+
+export type DirectMessage = {
+  id: number;
+  senderId: number;
+  body: string;
+  source: string;
+  isRead: boolean;
+  createdAt: number;
+};
+
 export type Presence = { onlineCount: number; onlineUsers: AuthorRef[] };
 export type FeedPage<T> = { items: T[]; nextCursor: string | null };
 export type SearchResult = { items: ThreadSummary[]; total: number };
@@ -374,6 +391,14 @@ export const api = {
     unreadCount: () => apiFetch<{ unreadCount: number }>("/api/notifications/unread-count"),
     markRead: (id: number) => apiFetch<{ ok: boolean }>(`/api/notifications/${id}/read`, { method: "POST" }),
     markAllRead: () => apiFetch<{ ok: boolean }>("/api/notifications/read-all", { method: "POST" }),
+  },
+
+  messages: {
+    conversations: () => apiFetch<{ items: ConversationSummary[] }>("/api/messages/conversations"),
+    list: (id: number) => apiFetch<{ items: DirectMessage[]; otherUser: AuthorRef }>(`/api/messages/conversations/${id}`),
+    send: (body: { username: string; body: string }) => apiFetch<{ conversationId: number }>("/api/messages", { method: "POST", body }),
+    markRead: (id: number) => apiFetch<{ ok: boolean }>(`/api/messages/conversations/${id}/read`, { method: "POST" }),
+    unreadCount: () => apiFetch<{ unreadCount: number }>("/api/messages/unread-count"),
   },
 
   admin: {
