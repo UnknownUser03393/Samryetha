@@ -8,7 +8,6 @@ import { LoginPage, type AuthMode } from "./login-page";
 import { ThreadPage } from "./thread-page";
 import { AdminPage } from "./admin-page";
 import { FeedbackPage } from "./feedback-page";
-import { TasksPage } from "./tasks-page";
 import { ForgotPasswordPage } from "./forgot-password-page";
 import { ResetPasswordPage } from "./reset-password-page";
 import { AuthProvider } from "./lib/auth";
@@ -171,7 +170,8 @@ function RootAppInner({ pathname }: { pathname: string }) {
   const detailMatch = activePath.match(DETAIL_PATTERN);
   if (detailMatch) {
     const id = Number(detailMatch[1]);
-    return <ThreadPage id={id} initialTitle={transitionTitle?.id === id ? transitionTitle.title : undefined} />;
+    // key={id}：跨帖切换强制重建，避免 replyText/replyingTo 等草稿状态残留下一个帖子
+    return <ThreadPage key={id} id={id} initialTitle={transitionTitle?.id === id ? transitionTitle.title : undefined} />;
   }
   if (activePath === "/post") return <><PostPage onPublished={(id) => { goToThread(id); showToast("Published"); }} /><Notifications items={notifications} /></>;
   if (activePath === "/profile") return <ProfilePage />;

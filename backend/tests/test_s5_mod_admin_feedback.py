@@ -345,3 +345,76 @@ def test_feedback_backups(api, tmp_path):
     assert os.path.exists(marker)
     with open(marker, encoding="utf-8") as fh:
         assert fh.read().strip() == name
+
+
+# ================================================================ M1/M2 回归
+
+
+def test_temp_ban_expires_on_login(api):
+    """临时封禁(banned_until)到期后，登录自动解封；未到期仍 403。"""
+    api.mkuser("victim")
+    api.mkuser("mod1", role="moderator")
+    api.login("mod1")
+    r = api.c.post(
+        "/api/moderation/bans",
+        json={"username": "victim", "reason": "tmp", "durationHours": 24},
+    )
+    assert r.status_code == 200, r.text
+
+    # 未到期 → 登录被拒
+    r = api.c.post("/api/auth/login", json={"username": "victim", "password": "password123"})
+    assert r.status_code == 403
+    assert r.json()["error"]["code"] == "BANNED"
+
+    # 把封禁时间改到过去 → 下次登录应自动解封
+    from sqlalchemy import update
+
+    from samryetha.db import now_ms
+    from samryetha.schema import bans
+
+    with api.app.state.db.request_conn() as conn:
+        conn.execute(update(bans).values(banned_until=now_ms() - 1000))
+
+    r = api.c.post("/api/auth/login", json={"username": "victim", "password": "password123"})
+    assert r.status_code == 200, r.text
+    assert r.json()["user"]["status"] == "active"
+    assert api.c.get("/api/auth/me").status_code == 200
+
+
+def test_permanent_ban_never_auto_lifts(api):
+    """永久封禁(banned_until IS NULL)不因时间流逝自动解封。"""
+    api.mkuser("victim")
+    api.mkuser("mod1", role="moderator")
+    api.login("mod1")
+    assert (
+        api.c.post("/api/moderation/bans", json={"username": "victim", "reason": "perm"}).status_code == 200
+    )
+    # 不存在 banned_until 可过期 → 登录恒 403
+    r = api.c.post("/api/auth/login", json={"username": "victim", "password": "password123"})
+    assert r.status_code == 403
+    assert r.json()["error"]["code"] == "BANNED"
+
+
+def test_moderator_cannot_ban_other_moderator(api):
+    """moderator 不能横向封 moderator(解封仅 admin)；可封普通用户；admin 可封 moderator。"""
+    api.mkuser("mod1", role="moderator")
+    api.mkuser("mod2", role="moderator")
+    api.mkuser("stu1")
+    api.login("mod1")
+
+    # 横向封 moderator → 409
+    r = api.c.post("/api/moderation/bans", json={"username": "mod2", "reason": "rival"})
+    assert r.status_code == 409
+    assert r.json()["error"]["code"] == "CONFLICT"
+
+    # 普通用户仍可封
+    assert (
+        api.c.post("/api/moderation/bans", json={"username": "stu1", "reason": "spam"}).status_code == 200
+    )
+
+    # admin 可封 moderator，随后解封
+    api.login_dev()
+    assert (
+        api.c.post("/api/moderation/bans", json={"username": "mod1", "reason": "trouble"}).status_code == 200
+    )
+    assert api.c.request("DELETE", "/api/moderation/bans/mod1", json={"reason": "ok"}).status_code == 200

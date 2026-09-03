@@ -467,7 +467,7 @@ def create_reply(conn: Connection, actor, discussion_id: int, data: dict) -> dic
     conn.execute(
         update(discussions)
         .where(discussions.c.id == discussion_id)
-        .values(reply_count=d["reply_count"] + 1, last_reply_at=_now, updated_at=_now)
+        .values(reply_count=discussions.c.reply_count + 1, last_reply_at=_now, updated_at=_now)
     )
     _emit_mentions(conn, body=data["bodyMarkdown"], author_id=actor.id, discussion_id=discussion_id, reply_id=reply_id, title=d["title"])
     emit_event(
@@ -565,6 +565,8 @@ def delete_reply(conn: Connection, actor, reply_id: int, reason: str | None) -> 
         "discussionId": rowd["discussion_id"],
     }
     assert_can(actor, Abilities.REPLY_DELETE, res, conn)
+    if rowd["deleted_at"] is not None:
+        return  # 已软删，幂等：不重复递减 reply_count
     _now = now_ms()
     conn.execute(
         update(replies)

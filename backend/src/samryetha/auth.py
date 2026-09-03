@@ -20,6 +20,7 @@ from .errors import (
     invalid_credentials,
     token_invalid,
 )
+from . import moderation
 from .schema import password_reset_tokens, users as users_table
 from .security import (
     create_session,
@@ -80,7 +81,10 @@ def login(
     if not verify_password(password, row["password_hash"]):
         raise invalid_credentials()
     if row["status"] == "banned":
-        raise banned()
+        # 临时封禁到期 → 自动解封继续登录；否则维持封禁
+        if not moderation.lift_ban_if_expired(conn, row["id"]):
+            raise banned()
+        row["status"] = "active"
     if row["status"] == "pending":
         raise forbidden("Your account is awaiting admin approval")
     if row["status"] != "active":
