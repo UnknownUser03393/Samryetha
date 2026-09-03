@@ -5,6 +5,8 @@ import { PostPage } from "./post-page";
 import { ProfilePage } from "./profile-page";
 import { SettingsPage } from "./settings-page";
 import { LoginPage, type AuthMode } from "./login-page";
+import { ForgotPasswordPage } from "./forgot-password-page";
+import { ResetPasswordPage } from "./reset-password-page";
 import { ThreadPage } from "./thread-page";
 import { AdminPage } from "./admin-page";
 import { FeedbackPage } from "./feedback-page";
@@ -84,7 +86,7 @@ function RootAppInner({ pathname }: { pathname: string }) {
         window.scrollTo({ top: 0 });
       };
 
-      const authPaths = ["/login", "/register"];
+      const authPaths = ["/login", "/register", "/forgot-password", "/reset-password"];
       if (authPaths.includes(activePath) && authPaths.includes(nextPath)) update();
       else runTransition(update, style);
     };
@@ -104,7 +106,7 @@ function RootAppInner({ pathname }: { pathname: string }) {
       if (destination.pathname === activePath && !nextView) return;
       const isDetail = DETAIL_PATTERN.test(destination.pathname);
       const isApp = destination.pathname === "/" || destination.pathname === "/post" || destination.pathname === "/profile" || destination.pathname === "/settings" || destination.pathname === "/admin" || destination.pathname === "/feedback";
-      if (!isDetail && !isApp && !["/login", "/register"].includes(destination.pathname)) return;
+      if (!isDetail && !isApp && !["/login", "/register", "/forgot-password", "/reset-password"].includes(destination.pathname)) return;
       event.preventDefault();
       // 保留 search（如 /?board=study），供 DiscussionApp 挂载时读板块初始化筛选。
       const currentIsDetail = DETAIL_PATTERN.test(activePath);
@@ -163,6 +165,8 @@ function RootAppInner({ pathname }: { pathname: string }) {
   const authModes: Partial<Record<string, AuthMode>> = { "/login": "login", "/register": "register" };
   const authMode = authModes[activePath];
   if (authMode) return <LoginPage mode={authMode} onSignedIn={signIn} />;
+  if (activePath === "/forgot-password") return <ForgotPasswordPage />;
+  if (activePath === "/reset-password") return <ResetPasswordPage />;
   const detailMatch = activePath.match(DETAIL_PATTERN);
   if (detailMatch) {
     const id = Number(detailMatch[1]);

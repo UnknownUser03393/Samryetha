@@ -45,6 +45,7 @@ export function SettingsPage() {
   const [displayName, setDisplayName] = useState("");
   const [username, setUsername] = useState("");
   const [bio, setBio] = useState("");
+  const [recoveryEmail, setRecoveryEmail] = useState("");
   const [saveState, setSaveState] = useState<"" | "saving" | "saved" | "error">("");
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
 
@@ -62,6 +63,7 @@ export function SettingsPage() {
     setDisplayName(user.displayName);
     setUsername(user.username);
     setBio(user.bio);
+    setRecoveryEmail(user.recoveryEmail ?? "");
     setPrefs({ ...PREF_DEFAULTS, ...(user.settings as Partial<Record<PrefKey, boolean>>) });
   }, [user]);
 
@@ -87,7 +89,7 @@ export function SettingsPage() {
     setSaveState("saving");
     setSaveMessage(null);
     try {
-      await api.users.updateProfile({ displayName: displayName.trim(), username: username.trim(), bio: bio.trim() });
+      await api.users.updateProfile({ displayName: displayName.trim(), username: username.trim(), bio: bio.trim(), recoveryEmail: recoveryEmail.trim() || null });
       await refresh();
       setSaveState("saved");
       setSaveMessage("Changes saved.");
@@ -139,6 +141,7 @@ export function SettingsPage() {
                 <label><span>Username</span><div className="prefixed-input"><span>@</span><input value={username} onChange={(e) => setUsername(e.target.value)} maxLength={30} /></div></label>
               </div>
               <label><span>Bio</span><textarea rows={4} value={bio} onChange={(e) => setBio(e.target.value)} maxLength={500} placeholder="A sentence or two about you." /></label>
+              <label><span>Recovery email — private, for password reset only</span><input type="email" value={recoveryEmail} onChange={(e) => setRecoveryEmail(e.target.value)} maxLength={200} placeholder="you@example.com" /></label>
               {saveMessage && <p className={`form-error ${saveState === "saved" ? "saved-note" : ""}`} role="status">{saveMessage}</p>}
               <div className="settings-actions"><button className="primary-action" type="submit" disabled={saveState === "saving"}>{saveState === "saving" ? "Saving…" : "Save changes"}</button></div>
             </form>

@@ -68,6 +68,7 @@ export type UserDTO = {
   bio: string;
   emailVerified: boolean;
   avatarObjectKey: string | null;
+  recoveryEmail: string | null;
   settings: Record<string, unknown>;
   createdAt: number;
   lastSeenAt: number | null;
@@ -297,6 +298,10 @@ export const api = {
       apiFetch<{ userId: number; message: string }>("/api/auth/register", { method: "POST", body }),
     changePassword: (body: { currentPassword: string; newPassword: string }) =>
       apiFetch<{ ok: boolean }>("/api/auth/change-password", { method: "POST", body }),
+    forgotPassword: (body: { username: string; recoveryEmail: string }) =>
+      apiFetch<{ ok: boolean; message: string }>("/api/auth/forgot-password", { method: "POST", body }),
+    resetPassword: (body: { token: string; newPassword: string }) =>
+      apiFetch<{ ok: boolean }>("/api/auth/reset-password", { method: "POST", body }),
   },
 
   users: {
@@ -309,7 +314,7 @@ export const api = {
       apiFetch<FeedPage<ThreadSummary>>(`/api/users/${encodeURIComponent(username)}/saved${qs({ cursor })}`),
     follow: (username: string) => apiFetch<void>(`/api/users/${encodeURIComponent(username)}/follow`, { method: "POST" }),
     unfollow: (username: string) => apiFetch<void>(`/api/users/${encodeURIComponent(username)}/follow`, { method: "DELETE" }),
-    updateProfile: (patch: { displayName?: string; username?: string; bio?: string; settings?: Record<string, boolean> }) =>
+    updateProfile: (patch: { displayName?: string; username?: string; bio?: string; recoveryEmail?: string | null; settings?: Record<string, boolean> }) =>
       apiFetch<{ user: UserDTO }>("/api/me/profile", { method: "PATCH", body: patch }),
   },
 

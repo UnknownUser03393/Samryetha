@@ -132,6 +132,7 @@ export function LoginPage({ mode, onSignedIn }: { mode: AuthMode; onSignedIn: ()
                 <button className="login-primary" type="submit" disabled={submitting}>{submitting ? "Signing in…" : "Sign in"}</button>
               </form>
               <p className="login-register">New to Samryetha? <a href="/register">Submit an application</a></p>
+              <p className="login-register"><a href="/forgot-password">Forgot password?</a></p>
             </>}
 
             {displayedMode === "register" && !registered && <>
