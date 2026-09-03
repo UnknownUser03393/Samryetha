@@ -59,6 +59,7 @@ def to_dto(row: dict) -> dict:
         "bio": row["bio"],
         "emailVerified": row.get("email_verified_at") is not None,
         "avatarObjectKey": row["avatar_object_key"],
+        "recoveryEmail": row.get("recovery_email"),
         "settings": settings,
         "createdAt": row["created_at"],
         "lastSeenAt": row["last_seen_at"],
@@ -104,6 +105,8 @@ def update_profile(conn: Connection, user_id: int, patch: dict) -> dict:
         updates["bio"] = patch["bio"]
     if "avatarObjectKey" in patch:
         updates["avatar_object_key"] = patch["avatarObjectKey"]
+    if "recoveryEmail" in patch:
+        updates["recovery_email"] = patch["recoveryEmail"]
     if patch.get("settings"):
         current = get_by_id(conn, user_id) or {}
         merged = {}

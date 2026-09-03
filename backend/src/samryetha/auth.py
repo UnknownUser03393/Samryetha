@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import secrets
 
-from sqlalchemy import select, update
+from sqlalchemy import and_, select, update
 from sqlalchemy.engine import Connection
 
 from .config import Settings
@@ -18,13 +18,15 @@ from .errors import (
     conflict,
     forbidden,
     invalid_credentials,
+    token_invalid,
 )
-from .schema import users as users_table
+from .schema import password_reset_tokens, users as users_table
 from .security import (
     create_session,
     delete_session,
     delete_user_sessions,
     hash_password,
+    hash_token,
     verify_against_dummy,
     verify_password,
 )
@@ -110,6 +112,60 @@ def change_password(conn: Connection, user_id: int, current_password: str, new_p
         .values(password_hash=new_hash, updated_at=now_ms())
     )
     delete_user_sessions(conn, user_id)
+
+
+# ---------------------------------------------------------------- password reset
+
+
+def forgot_password(conn: Connection, username: str, recovery_email: str) -> str | None:
+    """生成一次性重置 token；不匹配时返回 None（不泄露账号是否存在）。"""
+    user = conn.execute(
+        select(users_table).where(
+            (users_table.c.username == normalize_username(username)) & (users_table.c.deleted_at.is_(None))
+        )
+    ).first()
+    if user is None or not user.recovery_email:
+        return None
+    if user.recovery_email.strip().lower() != recovery_email.strip().lower():
+        return None
+    token = secrets.token_urlsafe(32)
+    conn.execute(
+        password_reset_tokens.insert().values(
+            user_id=user.id,
+            token_hash=hash_token(token),
+            expires_at=now_ms() + 60 * 60 * 1000,
+            created_at=now_ms(),
+        )
+    )
+    return token
+
+
+def reset_password(conn: Connection, token: str, new_password: str) -> None:
+    """校验一次性 token 并重置密码，踢掉旧会话。"""
+    token_hash = hash_token(token)
+    row = conn.execute(
+        select(password_reset_tokens).where(
+            and_(
+                password_reset_tokens.c.token_hash == token_hash,
+                password_reset_tokens.c.expires_at > now_ms(),
+                password_reset_tokens.c.used_at.is_(None),
+            )
+        )
+    ).first()
+    if row is None:
+        raise token_invalid("Reset link is invalid or expired")
+    new_hash = hash_password(new_password)
+    conn.execute(
+        update(users_table)
+        .where(users_table.c.id == row.user_id)
+        .values(password_hash=new_hash, updated_at=now_ms())
+    )
+    conn.execute(
+        update(password_reset_tokens)
+        .where(password_reset_tokens.c.id == row.id)
+        .values(used_at=now_ms())
+    )
+    delete_user_sessions(conn, row.user_id)
 
 
 # ---------------------------------------------------------------- bootstrap

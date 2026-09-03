@@ -55,6 +55,7 @@ users = Table(
     Column("status", Text, nullable=False, server_default="pending"),  # pending|active|banned|deactivated
     Column("discriminator", Integer),  # 随机 4 位身份号
     Column("email_domain", Text),
+    Column("recovery_email", Text),  # 密码找回邮箱（仅本人可见，不对外公开）
     _ms("email_verified_at"),
     Column("avatar_object_key", Text),
     _ms("last_seen_at"),

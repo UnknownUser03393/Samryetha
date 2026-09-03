@@ -67,6 +67,28 @@ class ChangePasswordBody(BaseModel):
     newPassword: Annotated[str, Field(min_length=8, max_length=200)]
 
 
+class ForgotPasswordBody(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    username: Annotated[str, Field(min_length=1, max_length=30)]
+    recoveryEmail: Annotated[str, Field(min_length=1, max_length=200)]
+
+    @field_validator("username", mode="before")
+    @classmethod
+    def _strip_u(cls, v: Any) -> Any:
+        return _strip(v)
+
+    @field_validator("recoveryEmail", mode="before")
+    @classmethod
+    def _strip_e(cls, v: Any) -> Any:
+        return _strip(v)
+
+
+class ResetPasswordBody(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    token: Annotated[str, Field(min_length=1, max_length=200)]
+    newPassword: Annotated[str, Field(min_length=8, max_length=200)]
+
+
 @router.post("/api/auth/register", status_code=201)
 def register(body: RegisterBody, conn: DbConn, request: Request) -> dict:
     _check_auth_rate_limit(request)
@@ -131,4 +153,25 @@ def change_password(
     user: CurrentUser = Depends(require_user),
 ) -> dict:
     auth_service.change_password(conn, user.id, body.currentPassword, body.newPassword)
+    return {"ok": True}
+
+
+@router.post("/api/auth/forgot-password")
+def forgot_password(body: ForgotPasswordBody, conn: DbConn, request: Request) -> dict:
+    token = auth_service.forgot_password(conn, body.username, body.recoveryEmail)
+    if token:
+        settings = request.app.state.settings
+        link = f"{settings.app_origin}/reset-password?token={token}"
+        # dev 用日志模拟邮件；生产接入真实 SMTP 后在此发送
+        logger.info("[mail] password reset link: %s", link)
+    # 统一返回成功文案，不泄露账号是否存在
+    return {
+        "ok": True,
+        "message": "If an account with that recovery email exists, a reset link has been sent. Otherwise contact an admin.",
+    }
+
+
+@router.post("/api/auth/reset-password")
+def reset_password(body: ResetPasswordBody, conn: DbConn) -> dict:
+    auth_service.reset_password(conn, body.token, body.newPassword)
     return {"ok": True}
