@@ -14,7 +14,7 @@ from sqlalchemy.engine import Connection
 from .authz import Abilities, assert_can, can
 from .boards import get_board_for_authz
 from .db import now_ms
-from .errors import forbidden, internal_error, not_found
+from .errors import forbidden, internal_error, not_found, validation_failed
 from .markdown import render_markdown
 from .outbox import emit_event
 from .schema import (
@@ -143,6 +143,38 @@ def _rows_for(conn: Connection, conds) -> list:
         .order_by(_activity().desc(), discussions.c.id.desc())
     )
     return conn.execute(stmt).all()
+
+
+_MENTION_PATTERN = re.compile(r"@([a-z0-9_]{3,30})", re.IGNORECASE)
+
+
+def _emit_mentions(conn: Connection, *, body: str, author_id: int, discussion_id: int, reply_id: int | None, title: str) -> None:
+    names = list(dict.fromkeys(match.group(1).lower() for match in _MENTION_PATTERN.finditer(body or "")))
+    if not names:
+        return
+    rows = conn.execute(
+        select(users.c.id, users.c.username).where(
+            users.c.username.in_(names),
+            users.c.deleted_at.is_(None),
+        )
+    ).all()
+    for row in rows:
+        if row.id == author_id:
+            continue
+        emit_event(
+            conn,
+            "mention.created",
+            aggregate_type="discussion",
+            aggregate_id=str(discussion_id),
+            payload={
+                "discussionId": discussion_id,
+                "replyId": reply_id,
+                "authorId": author_id,
+                "mentionedUserId": row.id,
+                "mentionedUsername": row.username,
+                "title": title,
+            },
+        )
 
 
 def _cursor_cond(cursor: str | None):
@@ -292,6 +324,9 @@ def get_discussion(conn: Connection, viewer, discussion_id: int) -> dict:
 def create_discussion(conn: Connection, actor, data: dict) -> dict:
     if actor is None:
         raise internal_error()
+    title = data["title"].strip()
+    if len(title) < 3:
+        raise validation_failed([{"field": "title", "message": "Title must be at least 3 characters", "code": "too_small"}])
     board = get_board_for_authz(conn, data["boardSlug"])
     if board is None:
         raise not_found("Board not found")
@@ -303,7 +338,7 @@ def create_discussion(conn: Connection, actor, data: dict) -> dict:
         discussions.insert().values(
             board_id=board["id"],
             author_id=actor.id,
-            title=data["title"],
+            title=title,
             body_md=data["bodyMarkdown"],
             body_html=body_html,
             created_at=_now,
@@ -318,6 +353,7 @@ def create_discussion(conn: Connection, actor, data: dict) -> dict:
             .where(attachments.c.id.in_(att_ids) & (attachments.c.uploader_id == actor.id))
             .values(discussion_id=disc_id, state="attached")
         )
+    _emit_mentions(conn, body=data["bodyMarkdown"], author_id=actor.id, discussion_id=disc_id, reply_id=None, title=title)
     emit_event(
         conn,
         "discussion.created",
@@ -327,7 +363,7 @@ def create_discussion(conn: Connection, actor, data: dict) -> dict:
             "discussionId": disc_id,
             "boardId": board["id"],
             "authorId": actor.id,
-            "title": data["title"],
+            "title": title,
         },
     )
     return get_discussion(conn, actor, disc_id)
@@ -348,7 +384,10 @@ def update_discussion(conn: Connection, actor, discussion_id: int, patch: dict) 
     assert_can(actor, Abilities.DISCUSSION_UPDATE, res, conn)
     values: dict = {"updated_at": now_ms()}
     if "title" in patch:
-        values["title"] = patch["title"]
+        title = patch["title"].strip()
+        if len(title) < 3:
+            raise validation_failed([{"field": "title", "message": "Title must be at least 3 characters", "code": "too_small"}])
+        values["title"] = title
     if "bodyMarkdown" in patch:
         values["body_md"] = patch["bodyMarkdown"]
         values["body_html"] = render_markdown(patch["bodyMarkdown"])
@@ -430,6 +469,7 @@ def create_reply(conn: Connection, actor, discussion_id: int, data: dict) -> dic
         .where(discussions.c.id == discussion_id)
         .values(reply_count=d["reply_count"] + 1, last_reply_at=_now, updated_at=_now)
     )
+    _emit_mentions(conn, body=data["bodyMarkdown"], author_id=actor.id, discussion_id=discussion_id, reply_id=reply_id, title=d["title"])
     emit_event(
         conn,
         "reply.created",
