@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type FormEvent, type ReactNode } from "react";
 import * as AlertDialog from "@radix-ui/react-alert-dialog";
 import { Loading } from "./loading";
 import { api, type DiscussionDetail, type ReplyDTO } from "./lib/api";
@@ -18,6 +18,8 @@ export function ThreadPage({ id, initialTitle }: { id: number; initialTitle?: st
   const [editTitle, setEditTitle] = useState("");
   const [editBody, setEditBody] = useState("");
   const [replyText, setReplyText] = useState("");
+  const [replyingTo, setReplyingTo] = useState<number | null>(null);
+  const replyInputRef = useRef<HTMLTextAreaElement>(null);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -271,8 +273,12 @@ export function ThreadPage({ id, initialTitle }: { id: number; initialTitle?: st
     if (!detail || busy || !replyText.trim()) return;
     setBusy(true);
     try {
-      await api.discussions.createReply(detail.id, { bodyMarkdown: replyText.trim() });
+      await api.discussions.createReply(detail.id, {
+        bodyMarkdown: replyText.trim(),
+        parentReplyId: replyingTo,
+      });
       setReplyText("");
+      setReplyingTo(null);
       await load();
       flash("Reply posted");
     } finally {
@@ -288,6 +294,70 @@ export function ThreadPage({ id, initialTitle }: { id: number; initialTitle?: st
       flash("Could not delete this reply.");
     }
   };
+
+  const replyTo = (reply: ReplyDTO) => {
+    setReplyingTo(reply.id);
+    replyInputRef.current?.focus();
+  };
+
+  const repliesByParent = replies.reduce<Map<number | null, ReplyDTO[]>>((groups, reply) => {
+    const group = groups.get(reply.parentReplyId) ?? [];
+    group.push(reply);
+    groups.set(reply.parentReplyId, group);
+    return groups;
+  }, new Map());
+
+  const renderReplies = (parentReplyId: number | null, depth = 0): ReactNode => (
+    <>
+      {(repliesByParent.get(parentReplyId) ?? []).map((reply) => (
+        <div className="reply-branch" key={reply.id} style={{ "--reply-depth": depth } as CSSProperties}>
+          <div className={`reply ${depth > 0 ? "is-thread" : ""}`}>
+            <div className="reply-head">
+              <a className="sender" href={`/profile?username=${encodeURIComponent(reply.author.username)}`}>{reply.author.displayName}</a>
+              <a className="muted-link" href={`/profile?username=${encodeURIComponent(reply.author.username)}`}>@{reply.author.handle}</a>
+              <span className="dot" />
+              <span>{formatTime(reply.createdAt)}</span>
+              {!reply.isDeleted && user && !detail?.isLocked && (
+                <button className="reply-action" type="button" onClick={() => replyTo(reply)}>Reply</button>
+              )}
+              {(isStaff || user?.id === reply.author.id) && (
+                <AlertDialog.Root>
+                  <AlertDialog.Trigger asChild>
+                    <button className="reply-delete" type="button">Delete</button>
+                  </AlertDialog.Trigger>
+                  <AlertDialog.Portal>
+                    <AlertDialog.Overlay className="dialog-overlay" />
+                    <AlertDialog.Content className="dialog-content">
+                      <AlertDialog.Title className="dialog-title">Delete this reply?</AlertDialog.Title>
+                      <AlertDialog.Description className="dialog-description">
+                        This cannot be undone. The reply will be permanently removed.
+                      </AlertDialog.Description>
+                      <div className="dialog-actions">
+                        <AlertDialog.Cancel asChild>
+                          <button type="button" className="action-btn">Cancel</button>
+                        </AlertDialog.Cancel>
+                        <AlertDialog.Action asChild>
+                          <button type="button" className="dialog-danger" onClick={() => void removeReply(reply)}>Delete</button>
+                        </AlertDialog.Action>
+                      </div>
+                    </AlertDialog.Content>
+                  </AlertDialog.Portal>
+                </AlertDialog.Root>
+              )}
+            </div>
+            {reply.isDeleted ? (
+              <p className="reply-deleted">This reply was removed.</p>
+            ) : reply.bodyHtml ? (
+              <div className="reply-body" dangerouslySetInnerHTML={{ __html: reply.bodyHtml }} />
+            ) : (
+              <p className="reply-body plain">{reply.bodyMarkdown}</p>
+            )}
+          </div>
+          {renderReplies(reply.id, depth + 1)}
+        </div>
+      ))}
+    </>
+  );
 
   if (loading) {
     return (
@@ -420,47 +490,7 @@ export function ThreadPage({ id, initialTitle }: { id: number; initialTitle?: st
             <h2 className="replies-title" id="replies-title">{replies.length} {replies.length === 1 ? "reply" : "replies"}</h2>
             {replies.length === 0 && <p className="empty-state">No replies yet. Start the conversation.</p>}
             <div className="reply-list">
-              {replies.map((reply) => (
-                <div className={`reply ${reply.parentReplyId ? "is-thread" : ""}`} key={reply.id}>
-                  <div className="reply-head">
-                    <a className="sender" href={`/profile?username=${encodeURIComponent(reply.author.username)}`}>{reply.author.displayName}</a>
-                    <a className="muted-link" href={`/profile?username=${encodeURIComponent(reply.author.username)}`}>@{reply.author.handle}</a>
-                    <span className="dot" />
-                    <span>{formatTime(reply.createdAt)}</span>
-                    {(isStaff || user?.id === reply.author.id) && (
-                      <AlertDialog.Root>
-                        <AlertDialog.Trigger asChild>
-                          <button className="reply-delete" type="button">Delete</button>
-                        </AlertDialog.Trigger>
-                        <AlertDialog.Portal>
-                          <AlertDialog.Overlay className="dialog-overlay" />
-                          <AlertDialog.Content className="dialog-content">
-                            <AlertDialog.Title className="dialog-title">Delete this reply?</AlertDialog.Title>
-                            <AlertDialog.Description className="dialog-description">
-                              This cannot be undone. The reply will be permanently removed.
-                            </AlertDialog.Description>
-                            <div className="dialog-actions">
-                              <AlertDialog.Cancel asChild>
-                                <button type="button" className="action-btn">Cancel</button>
-                              </AlertDialog.Cancel>
-                              <AlertDialog.Action asChild>
-                                <button type="button" className="dialog-danger" onClick={() => void removeReply(reply)}>Delete</button>
-                              </AlertDialog.Action>
-                            </div>
-                          </AlertDialog.Content>
-                        </AlertDialog.Portal>
-                      </AlertDialog.Root>
-                    )}
-                  </div>
-                  {reply.isDeleted ? (
-                    <p className="reply-deleted">This reply was removed.</p>
-                  ) : reply.bodyHtml ? (
-                    <div className="reply-body" dangerouslySetInnerHTML={{ __html: reply.bodyHtml }} />
-                  ) : (
-                    <p className="reply-body plain">{reply.bodyMarkdown}</p>
-                  )}
-                </div>
-              ))}
+              {renderReplies(null)}
             </div>
 
             {!user ? (
@@ -469,9 +499,15 @@ export function ThreadPage({ id, initialTitle }: { id: number; initialTitle?: st
               <p className="empty-state">This discussion is locked.</p>
             ) : (
               <form className="reply-form" onSubmit={submitReply} noValidate>
+                {replyingTo !== null && (
+                  <div className="replying-banner">
+                    Replying to @{replies.find((reply) => reply.id === replyingTo)?.author.handle ?? "comment"}
+                    <button type="button" className="reply-cancel" onClick={() => setReplyingTo(null)} aria-label="Cancel reply">Cancel</button>
+                  </div>
+                )}
                 <label className="form-field body-field">
                   <span className="sr-only">Reply</span>
-                  <textarea value={replyText} onChange={(e) => setReplyText(e.target.value)} rows={4} placeholder="Add to the discussion…" />
+                  <textarea ref={replyInputRef} value={replyText} onChange={(e) => setReplyText(e.target.value)} rows={4} placeholder={replyingTo === null ? "Add to the discussion…" : "Write a reply…"} />
                 </label>
                 <div className="submit-actions">
                   <button className="primary-action" type="submit" disabled={busy || !replyText.trim()}>

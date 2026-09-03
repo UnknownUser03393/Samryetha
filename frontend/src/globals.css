@@ -545,16 +545,21 @@ input:-webkit-autofill:active {
 .replies { margin-top: 44px; }
 .replies-title { font-size: 16px; font-weight: 650; letter-spacing: -.01em; margin: 0 0 6px; }
 .reply-list { border-top: 1px solid var(--line); }
+.reply-branch { --reply-indent: min(calc(var(--reply-depth) * 22px), 132px); margin-left: var(--reply-indent); }
 .reply { padding: 18px 0; border-bottom: 1px solid var(--line); }
-.reply.is-thread { margin-left: 22px; padding-left: 18px; border-left: 2px solid var(--line); border-bottom-color: transparent; }
+.reply.is-thread { padding-left: 18px; border-left: 2px solid var(--line); border-bottom-color: transparent; }
 .reply-head { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--muted); margin-bottom: 7px; }
-.reply-delete { margin-left: auto; background: none; border: 0; color: var(--faint); font-size: 12px; cursor: pointer; }
-.reply-delete:hover { color: #c0392b; }
+.reply-action, .reply-delete { margin-left: auto; background: none; border: 0; color: var(--faint); font-size: 12px; cursor: pointer; }
+.reply-delete { margin-left: 0; }
+.reply-action:hover, .reply-delete:hover { color: var(--accent); }
 .reply-body { font-size: 14.5px; line-height: 1.7; }
 .reply-body.plain, .thread-detail-body.plain { white-space: pre-wrap; }
 .reply-deleted { font-size: 13px; color: var(--faint); font-style: italic; }
 .reply-form { margin-top: 24px; padding: 18px; background: var(--surface-2); border: 1px solid var(--line); border-radius: 14px; }
 .reply-form .submit-actions { display: flex; justify-content: flex-end; margin-top: 12px; }
+.replying-banner { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; color: var(--accent); font-size: 13px; }
+.reply-cancel { border: 0; background: none; color: var(--muted); cursor: pointer; font-size: 12px; }
+.reply-cancel:hover { color: var(--ink); }
 
 /* ---- Alert dialog (radix) ---- */
 .dialog-overlay {
