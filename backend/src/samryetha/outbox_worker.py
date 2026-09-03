@@ -20,7 +20,7 @@ from . import notifications
 from .db import Database, now_ms
 from .errors import internal_error  # noqa: F401  (保留引用，handler 里区分 404 语义用)
 from .mailer import ban_notification_text
-from .schema import discussion_follows, discussions, notifications as notifications_table, outbox_events, users
+from .schema import discussion_follows, discussions, notifications as notifications_table, outbox_events, replies, users
 
 logger = logging.getLogger("samryetha.outbox")
 
@@ -63,6 +63,13 @@ def _on_reply_created(conn, payload: dict) -> list[dict]:
     ).all()
     recipients = {disc.author_id}
     recipients.update(r.user_id for r in follows)
+    # 嵌套回复：被回复的那条评论的作者也应收到通知
+    # Nested reply: also notify the author of the parent reply being replied to
+    parent_reply_id = payload.get("parentReplyId")
+    if parent_reply_id:
+        parent = conn.execute(select(replies.c.author_id).where(replies.c.id == parent_reply_id)).first()
+        if parent is not None:
+            recipients.add(parent.author_id)
     recipients.discard(author_id)
     body = f"{actor_name} 回复了「{title}」"
     out: list[dict] = []
