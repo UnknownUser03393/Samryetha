@@ -121,6 +121,15 @@ def _on_mention_created(conn, payload: dict) -> list[dict]:
     return _publish(user_id)
 
 
+def _on_message_created(conn, payload: dict) -> list[dict]:
+    # 私信：通知收件方，让其未读徽标实时刷新
+    # Direct message: notify the recipient so their unread badge refreshes in real time
+    recipient_id = payload.get("recipientId")
+    if not recipient_id:
+        return []
+    return _publish(recipient_id)
+
+
 def _on_user_followed(conn, payload: dict) -> list[dict]:
     follower_id = payload.get("followerId")
     followee_id = payload.get("followeeId")
@@ -162,6 +171,7 @@ def register_outbox_handlers(dispatcher: OutboxDispatcher, mailer=None) -> None:
         mailer = ConsoleMailer()
     dispatcher.on("reply.created", _on_reply_created)
     dispatcher.on("mention.created", _on_mention_created)
+    dispatcher.on("message.created", _on_message_created)
     dispatcher.on("user.followed", _on_user_followed)
     dispatcher.on("user.banned", lambda conn, payload: _on_user_banned(conn, payload, mailer))
 

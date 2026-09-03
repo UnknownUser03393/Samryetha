@@ -17,6 +17,8 @@ export function InboxPage() {
   const [reply, setReply] = useState("");
 
   const [notifs, setNotifs] = useState<NotificationDTO[]>([]);
+  const [newTo, setNewTo] = useState<string | null>(null);
+  const [newBody, setNewBody] = useState("");
 
   const loadConversations = () => {
     api.messages.conversations().then((d) => setConversations(d.items)).catch(() => undefined);
@@ -32,6 +34,14 @@ export function InboxPage() {
     loadNotifications();
   }, [user]);
 
+  useEffect(() => {
+    // 从 profile 的 Message 按钮跳转而来：读取 ?to=<username> 进入新会话撰写
+    // Arrived via the profile Message button: read ?to=<username> to compose a new message
+    if (typeof window === "undefined") return;
+    const to = new URLSearchParams(window.location.search).get("to");
+    if (to) setNewTo(to);
+  }, []);
+
   const openConversation = async (id: number) => {
     setActiveConvId(id);
     const d = await api.messages.list(id);
@@ -46,6 +56,17 @@ export function InboxPage() {
     await api.messages.send({ username: otherUser.username, body: reply.trim() });
     setReply("");
     await openConversation(activeConvId);
+  };
+
+  const sendNew = async () => {
+    // 新会话：给 ?to 指定的用户发第一条私信，成功后打开该会话
+    // New conversation: send the first message to the ?to user, then open it
+    if (!newTo || !newBody.trim()) return;
+    const d = await api.messages.send({ username: newTo, body: newBody.trim() });
+    setNewBody("");
+    setNewTo(null);
+    loadConversations();
+    await openConversation(d.conversationId);
   };
 
   const openNotification = async (n: NotificationDTO) => {
@@ -75,6 +96,17 @@ export function InboxPage() {
         </header>
 
         {tab === "messages" && (
+          <>
+            {newTo && (
+              <form className="new-message" onSubmit={(e) => { e.preventDefault(); void sendNew(); }}>
+                <div className="new-message-head">
+                  <strong>New message to @{newTo}</strong>
+                  <button type="button" className="action-btn" onClick={() => { setNewTo(null); setNewBody(""); }}>Cancel</button>
+                </div>
+                <textarea value={newBody} onChange={(e) => setNewBody(e.target.value)} rows={3} maxLength={5000} placeholder="Write your first message…" autoFocus />
+                <button className="primary-action" type="submit" disabled={!newBody.trim()}>Send</button>
+              </form>
+            )}
           <div className="inbox-messages">
             <aside className="conversation-list">
               {conversations.length === 0 ? (
@@ -110,6 +142,7 @@ export function InboxPage() {
               )}
             </section>
           </div>
+          </>
         )}
 
         {tab === "notifications" && (

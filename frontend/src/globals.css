@@ -941,3 +941,13 @@ html body[data-scroll-locked] {
   .conversation-list { border-right: 0; border-bottom: 1px solid var(--line); max-height: 220px; }
   .user-menu-name { max-width: 72px; }
 }
+
+/* ---- profile Message 按钮 / inbox 新会话撰写 ---- */
+/* ---- profile Message button / inbox new-conversation compose ---- */
+.profile-actions { display: flex; align-items: center; gap: 8px; }
+.new-message { display: flex; flex-direction: column; gap: 10px; padding: 16px; margin-bottom: 16px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
+.new-message-head { display: flex; align-items: center; justify-content: space-between; }
+.new-message-head strong { color: var(--ink); font-size: 13px; font-weight: 620; }
+.new-message textarea { width: 100%; min-height: 72px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; outline: 0; background: var(--bg); color: var(--ink); font-size: 13px; line-height: 1.5; resize: vertical; }
+.new-message textarea:focus { border-color: color-mix(in srgb, var(--accent) 62%, var(--line)); }
+.new-message .primary-action { align-self: flex-end; }
