@@ -27,7 +27,11 @@ export function PostPage({ onPublished }: { onPublished: (id: number) => void })
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!title.trim() || !body.trim() || !selectedBoard || submitting) return;
+    if (title.trim().length < 3) {
+      setError("Title must be at least 3 characters");
+      return;
+    }
+    if (!body.trim() || !selectedBoard || submitting) return;
     setSubmitting(true);
     setError(null);
     setHint(null);
@@ -73,7 +77,7 @@ export function PostPage({ onPublished }: { onPublished: (id: number) => void })
                 <label className="form-field">
                   <span className="sr-only">Title</span>
                   <input value={title} onChange={(event) => setTitle(event.target.value)} maxLength={100} placeholder="What do you want to discuss?" autoFocus />
-                  <small>{title.length}/100</small>
+                  <small>{title.trim().length > 0 && title.trim().length < 3 ? `Min 3 chars (${title.trim().length}/3)` : `${title.length}/100`}</small>
                 </label>
 
                 <SDropdown
@@ -89,7 +93,7 @@ export function PostPage({ onPublished }: { onPublished: (id: number) => void })
 
               <label className="form-field body-field">
                 <span>Message (markdown supported)</span>
-                <textarea value={body} onChange={(event) => setBody(event.target.value)} rows={11} placeholder="Add context, details, or a question…" />
+                <textarea value={body} onChange={(event) => setBody(event.target.value)} rows={11} maxLength={40000} placeholder="Add context, details, or a question…" />
               </label>
 
               {error && <p className="form-error" role="alert">{error}</p>}
@@ -99,7 +103,7 @@ export function PostPage({ onPublished }: { onPublished: (id: number) => void })
                 <button className="attachment-action" type="button" onClick={() => setHint("Attachments aren’t wired up yet — plain text works fine.")}>Add attachment</button>
                 <div className="submit-actions">
                   <button className="draft-action" type="button" disabled>Save draft</button>
-                  <button className="primary-action" type="submit" disabled={!title.trim() || !body.trim() || !selectedBoard || submitting}>{submitting ? "Posting…" : "Post discussion"}</button>
+                  <button className="primary-action" type="submit" disabled={title.trim().length < 3 || !body.trim() || !selectedBoard || submitting}>{submitting ? "Posting…" : "Post discussion"}</button>
                 </div>
               </div>
           </form>
