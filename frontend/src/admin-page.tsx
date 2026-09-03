@@ -214,6 +214,7 @@ function UsersSection({ onNotify }: { onNotify: (message: string) => void }) {
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState<UserStatus | "all">("all");
   const [role, setRole] = useState<UserRole | "all">("all");
+  const [temporaryPassword, setTemporaryPassword] = useState<string | null>(null);
 
   const loadFirst = useCallback(async () => {
     try {
@@ -346,6 +347,20 @@ function UsersSection({ onNotify }: { onNotify: (message: string) => void }) {
                   className="admin-control admin-dropdown"
                   disabled={busyId !== null || user.id === me?.id}
                 />
+                {user.id !== me?.id && user.status !== "banned" && (
+                  <button className="admin-btn" type="button" disabled={busyId !== null} onClick={() => void (async () => {
+                    setBusyId(user.id);
+                    try {
+                      const result = await api.admin.resetPassword(user.id);
+                      setTemporaryPassword(result.temporaryPassword);
+                      await loadFirst();
+                    } catch (err) {
+                      onNotify(err instanceof ApiError ? err.message : "Action failed.");
+                    } finally {
+                      setBusyId(null);
+                    }
+                  })()}>Reset password</button>
+                )}
                 {user.id !== me?.id && (
                   <AlertDialog.Root>
                     <AlertDialog.Trigger asChild>
@@ -382,6 +397,19 @@ function UsersSection({ onNotify }: { onNotify: (message: string) => void }) {
         })()}>Load more</button>
       )}
       {!loading && items.length === 0 && <div className="empty-state">No users found.</div>}
+      {temporaryPassword && (
+        <div className="dialog-overlay" onClick={() => setTemporaryPassword(null)}>
+          <div className="dialog-content feedback-modal" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
+            <h2 className="dialog-title">Temporary password created</h2>
+            <p className="admin-muted">Copy it now — it is only shown once.</p>
+            <label className="form-field"><span>Temporary password</span><input readOnly value={temporaryPassword} onFocus={(event) => event.target.select()} /></label>
+            <div className="dialog-actions">
+              <button className="primary-action" type="button" onClick={() => { void navigator.clipboard.writeText(temporaryPassword); }}>Copy</button>
+              <button className="action-btn" type="button" onClick={() => setTemporaryPassword(null)}>Close</button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }

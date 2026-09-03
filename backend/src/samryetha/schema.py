@@ -48,6 +48,7 @@ users = Table(
     Column("id", Integer, primary_key=True, autoincrement=True),
     Column("username", Text, nullable=False),
     Column("email", Text, nullable=False),
+    Column("recovery_email", Text),
     Column("display_name", Text, nullable=False),
     Column("bio", Text, nullable=False, server_default=""),
     Column("password_hash", Text, nullable=False),

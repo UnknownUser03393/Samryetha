@@ -44,6 +44,7 @@ export function SettingsPage() {
 
   const [displayName, setDisplayName] = useState("");
   const [username, setUsername] = useState("");
+  const [recoveryEmail, setRecoveryEmail] = useState("");
   const [bio, setBio] = useState("");
   const [saveState, setSaveState] = useState<"" | "saving" | "saved" | "error">("");
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
@@ -61,6 +62,7 @@ export function SettingsPage() {
     if (!user) return;
     setDisplayName(user.displayName);
     setUsername(user.username);
+    setRecoveryEmail(user.recoveryEmail ?? "");
     setBio(user.bio);
     setPrefs({ ...PREF_DEFAULTS, ...(user.settings as Partial<Record<PrefKey, boolean>>) });
   }, [user]);
@@ -84,10 +86,25 @@ export function SettingsPage() {
 
   const saveProfile = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (!displayName.trim()) {
+      setSaveState("error");
+      setSaveMessage("Display name cannot be empty.");
+      return;
+    }
+    if (!/^[a-z0-9_]{3,30}$/i.test(username.trim())) {
+      setSaveState("error");
+      setSaveMessage("Username must be 3-30 letters, numbers, or underscores.");
+      return;
+    }
+    if (recoveryEmail.trim() && !/^\S+@\S+\.\S+$/.test(recoveryEmail.trim())) {
+      setSaveState("error");
+      setSaveMessage("Enter a valid recovery email.");
+      return;
+    }
     setSaveState("saving");
     setSaveMessage(null);
     try {
-      await api.users.updateProfile({ displayName: displayName.trim(), username: username.trim(), bio: bio.trim() });
+      await api.users.updateProfile({ displayName: displayName.trim(), username: username.trim(), recoveryEmail: recoveryEmail.trim(), bio: bio.trim() });
       await refresh();
       setSaveState("saved");
       setSaveMessage("Changes saved.");
@@ -137,6 +154,7 @@ export function SettingsPage() {
               <div className="settings-field-grid">
                 <label><span>Display name</span><input value={displayName} onChange={(e) => setDisplayName(e.target.value)} maxLength={50} /></label>
                 <label><span>Username</span><div className="prefixed-input"><span>@</span><input value={username} onChange={(e) => setUsername(e.target.value)} maxLength={30} /></div></label>
+                <label><span>Recovery email</span><input type="email" autoComplete="email" value={recoveryEmail} onChange={(e) => setRecoveryEmail(e.target.value)} maxLength={200} placeholder="you@example.com" /></label>
               </div>
               <label><span>Bio</span><textarea rows={4} value={bio} onChange={(e) => setBio(e.target.value)} maxLength={500} placeholder="A sentence or two about you." /></label>
               {saveMessage && <p className={`form-error ${saveState === "saved" ? "saved-note" : ""}`} role="status">{saveMessage}</p>}

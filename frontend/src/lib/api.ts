@@ -63,6 +63,7 @@ export type UserDTO = {
   handle: string;
   displayName: string;
   email: string;
+  recoveryEmail: string | null;
   role: UserRole;
   status: UserStatus;
   bio: string;
@@ -297,6 +298,10 @@ export const api = {
       apiFetch<{ userId: number; message: string }>("/api/auth/register", { method: "POST", body }),
     changePassword: (body: { currentPassword: string; newPassword: string }) =>
       apiFetch<{ ok: boolean }>("/api/auth/change-password", { method: "POST", body }),
+    forgotPassword: (body: { username: string; recoveryEmail: string }) =>
+      apiFetch<{ ok: boolean; message: string }>("/api/auth/forgot-password", { method: "POST", body }),
+    resetPassword: (body: { token: string; newPassword: string }) =>
+      apiFetch<{ ok: boolean }>("/api/auth/reset-password", { method: "POST", body }),
   },
 
   users: {
@@ -309,7 +314,7 @@ export const api = {
       apiFetch<FeedPage<ThreadSummary>>(`/api/users/${encodeURIComponent(username)}/saved${qs({ cursor })}`),
     follow: (username: string) => apiFetch<void>(`/api/users/${encodeURIComponent(username)}/follow`, { method: "POST" }),
     unfollow: (username: string) => apiFetch<void>(`/api/users/${encodeURIComponent(username)}/follow`, { method: "DELETE" }),
-    updateProfile: (patch: { displayName?: string; username?: string; bio?: string; settings?: Record<string, boolean> }) =>
+    updateProfile: (patch: { displayName?: string; username?: string; recoveryEmail?: string; bio?: string; settings?: Record<string, boolean> }) =>
       apiFetch<{ user: UserDTO }>("/api/me/profile", { method: "PATCH", body: patch }),
   },
 
@@ -369,6 +374,7 @@ export const api = {
     changeStatus: (id: number, body: { status: "active" | "deactivated"; reason?: string }) =>
       apiFetch<AdminUser>(`/api/admin/users/${id}/status`, { method: "PATCH", body }),
     verifyUser: (id: number) => apiFetch<AdminUser>(`/api/admin/users/${id}/verify`, { method: "POST", body: {} }),
+    resetPassword: (id: number) => apiFetch<{ temporaryPassword: string }>(`/api/admin/users/${id}/reset-password`, { method: "POST", body: {} }),
     deleteUser: (id: number) => apiFetch<{ ok: boolean }>(`/api/admin/users/${id}`, { method: "DELETE" }),
     deletedContent: (params: { discussionCursor?: number; replyCursor?: number; limit?: number } = {}) =>
       apiFetch<{ discussions: DeletedDiscussion[]; replies: DeletedReply[]; nextDiscussionCursor: number | null; nextReplyCursor: number | null }>(

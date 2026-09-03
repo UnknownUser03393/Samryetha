@@ -77,6 +77,15 @@ def change_status(
     return service.change_status(conn, user, id, body.status, body.reason)
 
 
+@router.post("/api/admin/users/{id}/reset-password")
+def reset_password(
+    id: UserId,
+    conn: DbConn,
+    user: CurrentUser = Depends(require_active_user),
+) -> dict:
+    return service.reset_password(conn, user, id)
+
+
 @router.post("/api/admin/users/{id}/verify")
 def verify_user(
     id: UserId,

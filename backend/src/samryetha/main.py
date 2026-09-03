@@ -29,6 +29,7 @@ from .errors import (
 )
 from .routers.health import router as health_router
 from .storage import Storage
+from .mailer import ConsoleMailer
 
 logger = logging.getLogger("samryetha")
 
@@ -218,6 +219,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app = FastAPI(title="Samryetha API", version="0.1.0", lifespan=lifespan)
     app.state.settings = settings
     app.state.db = db
+    app.state.mailer = ConsoleMailer()
     # 登录/注册 per-route 限流（防暴力破解/批量注册；测试放宽以免拖慢测试套件，镜像 auth/routes.ts）
     app.state.auth_limiter = SlidingWindowLimiter(
         max_hits=1_000_000 if settings.node_env == "test" else 10,
