@@ -71,22 +71,43 @@ def _summary(conn: Connection, board: dict, viewer_id: int | None) -> dict:
     }
 
 
-def list_boards(conn: Connection, viewer_id: int | None) -> list[dict]:
+def _is_visible(conn: Connection, viewer, board: dict) -> bool:
+    """板块对 viewer 可见？全局 mod/admin 全见；public 全见；其余仅成员可见。
+    镜像 boards/service.ts 的 visibleBoardRows。"""
+    if viewer is not None and viewer.role in ("admin", "moderator"):
+        return True
+    if board["visibility"] == "public":
+        return True
+    if viewer is None:
+        return False
+    row = conn.execute(
+        select(board_members.c.board_id).where(
+            (board_members.c.board_id == board["id"]) & (board_members.c.user_id == viewer.id)
+        )
+    ).first()
+    return row is not None
+
+
+def list_boards(conn: Connection, viewer) -> list[dict]:
     rows = conn.execute(
         select(boards).where(boards.c.deleted_at.is_(None)).order_by(boards.c.name)
     ).all()
+    viewer_id = viewer.id if viewer is not None else None
     out = []
     for r in rows:
         b = dict(r._mapping)
+        if not _is_visible(conn, viewer, b):
+            continue
         out.append(_summary(conn, b, viewer_id))
     return out
 
 
-def get_board(conn: Connection, viewer_id: int | None, slug: str) -> dict:
+def get_board(conn: Connection, viewer, slug: str) -> dict:
     b = get_by_slug(conn, slug)
-    if b is None:
+    # 不可见 → 统一 notFound，不泄漏板块存在性（镜像 TS：visible.some → throw notFound）
+    if b is None or not _is_visible(conn, viewer, b):
         raise not_found("Board not found")
-    return _summary(conn, b, viewer_id)
+    return _summary(conn, b, viewer.id if viewer is not None else None)
 
 
 def create_board(conn: Connection, actor_id: int, data: dict) -> dict:
@@ -181,9 +202,9 @@ def leave_board(conn: Connection, user_id: int, slug: str) -> None:
     )
 
 
-def list_members(conn: Connection, slug: str) -> list[dict]:
+def list_members(conn: Connection, viewer, slug: str) -> list[dict]:
     board = get_by_slug(conn, slug)
-    if board is None:
+    if board is None or not _is_visible(conn, viewer, board):
         raise not_found("Board not found")
     rows = conn.execute(
         select(users.c.id, users.c.username, users.c.display_name, users.c.discriminator,

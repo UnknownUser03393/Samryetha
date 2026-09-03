@@ -252,7 +252,7 @@ def set_backup_settings(
     return {"ok": True}
 
 
-# ================================================================ Agent 密钥 (无鉴权，原样复刻 TS)
+# ================================================================ Agent 密钥 (admin 鉴权)
 
 
 class KeyBody(BaseModel):
@@ -267,13 +267,26 @@ class KeyEnabledBody(BaseModel):
     enabled: bool
 
 
+# 密钥管理属敏感操作：必须登录且具备 admin 权限（镜像 feedback/agent.ts 的 requireAdmin）
+def _require_admin(
+    conn: DbConn,
+    user: CurrentUser = Depends(require_active_user),
+) -> CurrentUser:
+    assert_can(user, Abilities.ADMIN_VIEW, None, conn)
+    return user
+
+
 @router.get("/api/admin/feedback/keys")
-def list_keys(conn: DbConn) -> dict:
+def list_keys(conn: DbConn, _user: CurrentUser = Depends(_require_admin)) -> dict:
     return {"items": service.list_keys(conn)}
 
 
 @router.post("/api/admin/feedback/keys", status_code=201)
-def create_key(body: KeyBody, conn: DbConn) -> dict:
+def create_key(
+    body: KeyBody,
+    conn: DbConn,
+    _user: CurrentUser = Depends(_require_admin),
+) -> dict:
     valid = {p["id"] for p in service.list_projects_for_admin(conn)}
     project_ids = [x for x in body.projectIds if x in valid]
     key, key_row = service.create_key(conn, body.name, body.role, project_ids)
@@ -285,13 +298,18 @@ def set_key_enabled(
     id: FeedbackId,
     body: KeyEnabledBody,
     conn: DbConn,
+    _user: CurrentUser = Depends(_require_admin),
 ) -> dict:
     service.set_key_enabled(conn, id, body.enabled)
     return {"ok": True}
 
 
 @router.delete("/api/admin/feedback/keys/{id}")
-def delete_key(id: FeedbackId, conn: DbConn) -> dict:
+def delete_key(
+    id: FeedbackId,
+    conn: DbConn,
+    _user: CurrentUser = Depends(_require_admin),
+) -> dict:
     service.delete_key(conn, id)
     return {"ok": True}
 

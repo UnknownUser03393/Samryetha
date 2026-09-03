@@ -1,5 +1,6 @@
 """/api/auth/* — 镜像 backend/src/auth/routes.ts。"""
 
+import logging
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Request, Response
@@ -8,10 +9,30 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from .. import auth as auth_service
 from ..deps import CurrentUser, DbConn, get_db, require_user
 from ..security import SESSION_COOKIE
-from ..errors import internal_error
+from ..errors import internal_error, rate_limited
 from ..users import get_by_id, to_dto
 
+logger = logging.getLogger("samryetha.auth")
+
 router = APIRouter()
+
+
+def _client_ip(request: Request) -> str:
+    """与 GuardMiddleware._client_ip 同一套规则：仅 TRUST_PROXY 下采信 X-Forwarded-For。"""
+    settings = request.app.state.settings
+    if settings.trust_proxy:
+        fwd = request.headers.get("x-forwarded-for")
+        if fwd:
+            return fwd.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
+
+
+def _check_auth_rate_limit(request: Request) -> None:
+    """登录/注册 per-route 限流（镜像 auth/routes.ts 的 rateLimit max=10/min）。"""
+    limiter = request.app.state.auth_limiter
+    allowed, retry_after = limiter.allow(_client_ip(request))
+    if not allowed:
+        raise rate_limited(int(retry_after * 1000))
 
 
 def _strip(v: Any) -> Any:
@@ -47,13 +68,20 @@ class ChangePasswordBody(BaseModel):
 
 
 @router.post("/api/auth/register", status_code=201)
-def register(body: RegisterBody, conn: DbConn) -> dict:
+def register(body: RegisterBody, conn: DbConn, request: Request) -> dict:
+    _check_auth_rate_limit(request)
+    # 内测期走假邮箱注册，未校验 ALLOWED_EMAIL_DOMAINS；生产环境打印醒目告警（镜像 auth/service.ts）
+    if request.app.state.settings.node_env == "production":
+        logger.warning(
+            "WARNING: registration uses internal fake email (samryetha.local); ALLOWED_EMAIL_DOMAINS is not enforced"
+        )
     user_id = auth_service.register(conn, body.username, body.password)
     return {"userId": user_id, "message": "pending"}
 
 
 @router.post("/api/auth/login")
 def login(body: LoginBody, conn: DbConn, request: Request, response: Response) -> dict:
+    _check_auth_rate_limit(request)
     settings = request.app.state.settings
     result = auth_service.login(
         conn,

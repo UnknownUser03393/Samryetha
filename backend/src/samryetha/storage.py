@@ -20,6 +20,44 @@ ALLOWED_EXTENSIONS = {
     ".mp4", ".mov", ".mp3", ".wav",
 }
 
+# 扩展名 → 服务端 Content-Type：附件回源时一律按扩展名推导，绝不信任客户端/入库声明的
+# mimeType（否则 text/html 之类可被内联渲染 → 存储型 XSS）。镜像 infra/storage/local.ts。
+MIME_BY_EXTENSION = {
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".gif": "image/gif",
+    ".webp": "image/webp",
+    ".avif": "image/avif",
+    ".pdf": "application/pdf",
+    ".txt": "text/plain",
+    ".md": "text/plain",
+    ".csv": "text/csv",
+    ".zip": "application/zip",
+    ".rar": "application/vnd.rar",
+    ".7z": "application/x-7z-compressed",
+    ".doc": "application/msword",
+    ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ".xls": "application/vnd.ms-excel",
+    ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    ".ppt": "application/vnd.ms-powerpoint",
+    ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    ".mp4": "video/mp4",
+    ".mov": "video/quicktime",
+    ".mp3": "audio/mpeg",
+    ".wav": "audio/wav",
+}
+
+# presign 时客户端可声明的 Content-Type 白名单（不含 text/html 等可执行/内联类型）。
+ALLOWED_MIME_TYPES = set(MIME_BY_EXTENSION.values())
+
+
+def content_type_for_object_key(object_key: str) -> str:
+    """按 objectKey 扩展名推导安全 Content-Type，未知一律 octet-stream。"""
+    ext = os.path.splitext(object_key)[1].lower()
+    return MIME_BY_EXTENSION.get(ext, "application/octet-stream")
+
+
 OBJECT_KEY_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/[^/]{1,255}$")
 
 MAX_UPLOAD_BYTES = 50 * 1024 * 1024

@@ -1,9 +1,14 @@
 from __future__ import annotations
 
+import os
+
 import pytest
 from fastapi import APIRouter
 from fastapi.testclient import TestClient
 from pydantic import BaseModel
+
+# 测试进程统一跑在 NODE_ENV=test：auth 限流走放宽档（镜像 TS auth/routes.ts 的 test 分支）
+os.environ.setdefault("NODE_ENV", "test")
 
 from samryetha.config import Settings
 from samryetha.db import Database

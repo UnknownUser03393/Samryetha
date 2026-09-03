@@ -111,7 +111,8 @@ class GuardMiddleware:
                 )
                 return
 
-        # 全局限频（信任 X-Forwarded-For：nginx 设置）
+        # 全局限频：仅当配置 TRUST_PROXY=true（位于受控反代后）才信任 X-Forwarded-For，
+        # 否则直连公网时 XFF 可被伪造 → 绕过限流（镜像 app/server.ts 的 trustProxy 修复）
         client = self._client_ip(scope, headers)
         allowed, retry_after = self.limiter.allow(client)
         if not allowed:
@@ -127,11 +128,11 @@ class GuardMiddleware:
 
         await self.app(scope, receive, send)
 
-    @staticmethod
-    def _client_ip(scope, headers) -> str:
-        fwd = headers.get(b"x-forwarded-for")
-        if fwd:
-            return fwd.decode("utf-8", "replace").split(",")[0].strip()
+    def _client_ip(self, scope, headers) -> str:
+        if self.settings.trust_proxy:
+            fwd = headers.get(b"x-forwarded-for")
+            if fwd:
+                return fwd.decode("utf-8", "replace").split(",")[0].strip()
         client = scope.get("client")
         return client[0] if client else "unknown"
 
@@ -217,6 +218,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app = FastAPI(title="Samryetha API", version="0.1.0", lifespan=lifespan)
     app.state.settings = settings
     app.state.db = db
+    # 登录/注册 per-route 限流（防暴力破解/批量注册；测试放宽以免拖慢测试套件，镜像 auth/routes.ts）
+    app.state.auth_limiter = SlidingWindowLimiter(
+        max_hits=1_000_000 if settings.node_env == "test" else 10,
+        window_seconds=60,
+    )
     # 附件本地磁盘存储（上传根目录启动时确保存在）
     import os
 

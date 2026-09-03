@@ -121,22 +121,23 @@ def ensure_builtin_accounts(conn: Connection, settings: Settings) -> None:
         ("dev", settings.dev_password),
     ]
     for username, password in accounts:
-        password_hash = hash_password(password)
         existing = conn.execute(
             select(users_table.c.id).where(users_table.c.username == username)
         ).first()
         if existing:
+            # 已存在账号：只确保角色/状态可用，绝不重置密码哈希——否则每次重启都会把密码
+            # 重置回 env 默认值，形成默认凭据后门（镜像 auth/bootstrap.ts 修复）。
             conn.execute(
                 update(users_table)
                 .where(users_table.c.id == existing[0])
                 .values(
-                    password_hash=password_hash,
                     role="admin",
                     status="active",
                     email_verified_at=now_ms(),
                 )
             )
             continue
+        password_hash = hash_password(password)
         disc = next_discriminator(conn)
         email = f"{username}@{FAKE_EMAIL_DOMAIN}"
         _now = now_ms()

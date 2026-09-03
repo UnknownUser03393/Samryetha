@@ -15,9 +15,9 @@ from sqlalchemy import select
 
 from .. import attachments as att
 from ..deps import CurrentUser, DbConn, get_storage, require_active_user, require_user
-from ..errors import bad_request, forbidden
+from ..errors import bad_request, forbidden, not_found
 from ..schema import attachments
-from ..storage import MAX_UPLOAD_BYTES, OBJECT_KEY_RE
+from ..storage import ALLOWED_MIME_TYPES, MAX_UPLOAD_BYTES, OBJECT_KEY_RE, content_type_for_object_key
 
 router = APIRouter()
 
@@ -38,6 +38,9 @@ def presign(
     storage: object = Depends(get_storage),
     user: CurrentUser = Depends(require_active_user),
 ) -> dict:
+    # 只允许白名单内的 Content-Type，防客户端把 text/html 之类的可执行类型带进附件
+    if body.mimeType not in ALLOWED_MIME_TYPES:
+        raise bad_request("Unsupported content type")
     return att.presign(conn, user, body.model_dump(), storage)
 
 
@@ -80,6 +83,16 @@ async def upload(request: Request, object_key: str) -> Response:
     declared = int(request.headers.get("content-length") or 0)
     if declared > MAX_UPLOAD_BYTES:
         raise bad_request("File too large")
+    # 按 presign 时声明的 size_bytes 收紧上限，防客户端绕过声明体积上传超大文件（镜像 attachments/routes.ts）
+    conn = request.app.state.db.engine.connect()
+    try:
+        meta = conn.execute(
+            select(attachments.c.size_bytes).where(attachments.c.object_key == object_key)
+        ).first()
+    finally:
+        conn.close()
+    if meta is not None and declared > meta.size_bytes:
+        raise bad_request("File too large")
     storage = request.app.state.storage
     try:
         full = storage.path_for(object_key)
@@ -110,7 +123,10 @@ async def serve(request: Request, object_key: str) -> Response:
         ).first()
     finally:
         conn.close()
-    mime = meta.mime_type if meta else "application/octet-stream"
+    # 不信任入库/客户端声明的 mime_type：按 objectKey 扩展名推导，杜绝 text/html 内联渲染 → 存储型 XSS
+    if meta is None:
+        raise not_found("Attachment not found")
+    mime = content_type_for_object_key(object_key)
     try:
         full = storage.path_for(object_key)
     except Exception:

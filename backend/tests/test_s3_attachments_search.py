@@ -53,14 +53,14 @@ def test_attachment_full_flow(api, tmp_path):
     assert api.c.get(f"/api/attachments/{attachment_id}").status_code == 404
 
 
-def test_presign_bad_extension_500(api):
-    # 复刻 TS bug：白名单外扩展名 → 普通 Error → 500
+def test_presign_rejects_unsupported_mime(api):
+    # 安全修复：presign 只收白名单 Content-Type（镜像 attachments/routes.ts），白名单外 → 400
     api.login_dev()
     res = api.c.post(
         "/api/attachments/presign",
         json={"filename": "evil.exe", "mimeType": "application/octet-stream", "sizeBytes": 10},
     )
-    assert res.status_code == 500
+    assert res.status_code == 400
 
 
 def test_attachments_require_login(api):

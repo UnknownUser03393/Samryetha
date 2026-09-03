@@ -266,7 +266,8 @@ def test_agent_api_and_keys(api):
     assert it.status_code == 201, it.text
     itid = it.json()["id"]
 
-    # Agent 密钥 CRUD 无需会话（TS 原样：无鉴权）
+    # Agent 密钥 CRUD 需 admin 会话（安全修复：无鉴权 → 仅 admin，镜像 feedback/agent.ts）
+    api.login_dev()
     key_body = {"name": "ci", "role": "write", "projectIds": [pid]}
     r = api.c.post("/api/admin/feedback/keys", json=key_body)
     assert r.status_code == 201, r.text

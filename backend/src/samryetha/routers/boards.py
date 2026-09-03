@@ -51,12 +51,12 @@ def list_boards(
     conn: DbConn,
     viewer: CurrentUser | None = Depends(get_current_user),
 ) -> dict:
-    return {"items": boards_service.list_boards(conn, viewer.id if viewer else None)}
+    return {"items": boards_service.list_boards(conn, viewer)}
 
 
 @router.get("/api/boards/{slug}")
 def get_board(slug: Slug, conn: DbConn, viewer: CurrentUser | None = Depends(get_current_user)) -> dict:
-    return boards_service.get_board(conn, viewer.id if viewer else None, slug)
+    return boards_service.get_board(conn, viewer, slug)
 
 
 @router.post("/api/boards", status_code=201)
@@ -137,8 +137,8 @@ def leave_board(
 
 
 @router.get("/api/boards/{slug}/members")
-def members(slug: Slug, conn: DbConn) -> dict:
-    return {"items": boards_service.list_members(conn, slug)}
+def members(slug: Slug, conn: DbConn, viewer: CurrentUser | None = Depends(get_current_user)) -> dict:
+    return {"items": boards_service.list_members(conn, viewer, slug)}
 
 
 @router.patch("/api/boards/{slug}/members/{userId}")

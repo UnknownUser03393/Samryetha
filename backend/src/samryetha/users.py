@@ -7,7 +7,7 @@
 from __future__ import annotations
 
 import json
-import random
+import secrets
 
 from sqlalchemy import and_, func, select, update
 from sqlalchemy.engine import Connection
@@ -31,7 +31,8 @@ def make_handle(username: str, discriminator: int | None) -> str:
 
 def next_discriminator(conn: Connection) -> int:
     for _ in range(50):
-        candidate = random.randint(1000, 9999)
+        # 密码学安全随机（镜像 users/service.ts 的 randomInt），避免可预测身份号
+        candidate = 1000 + secrets.randbelow(9000)
         row = conn.execute(
             select(users.c.id).where(users.c.discriminator == candidate)
         ).first()
