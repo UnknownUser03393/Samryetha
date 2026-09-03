@@ -1,0 +1,32 @@
+[project]
+name = "samryetha-backend"
+version = "0.1.0"
+description = "Samryetha campus forum API — Python (FastAPI) parity port of the TypeScript backend"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "pydantic>=2.7",
+    "pydantic-settings>=2.4",
+    "SQLAlchemy>=2.0",
+    "argon2-cffi>=23.1",
+    "apscheduler<4",
+    "markdown-it-py>=3.0",
+    "nh3>=0.2",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "httpx>=0.27",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/samryetha"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

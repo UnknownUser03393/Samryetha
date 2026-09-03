@@ -4,40 +4,40 @@
 
 Samryetha 是学校内部论坛/社区产品的后端。采用 **modular monolith**（模块化单体）：一个进程、一个数据库，按领域模块清晰切分，模块间通过已声明的 service 接口调用，禁止跨模块直接 import 私有表。
 
-技术栈（实际落地的版本见 `package.json`）：
+技术栈（实际落地的版本见 `pyproject.toml`，uv 管理 venv）：
 
 | 层 | 选型 |
 |----|------|
-| 运行时 | Node.js 22（`node:sqlite` 内置驱动） |
-| Web 框架 | Fastify 5 + `fastify-type-provider-zod`（Zod v4 编译校验/序列化） |
-| 数据库 | SQLite（WAL 模式）+ Drizzle ORM（`drizzle-orm/sqlite-proxy` 适配 `node:sqlite`） |
-| 密码 | Argon2id（`@node-rs/argon2` 预编译二进制） |
+| 运行时 | Python 3.14（uv） |
+| Web 框架 | FastAPI + Starlette |
+| 数据库 | SQLite（WAL 模式）+ SQLAlchemy 2.0 Core（显式 Table，唯一 schema 真源在 `schema.py`；存量库直接打开无需迁移） |
+| 密码 | Argon2id（argon2-cffi，`m=19456,t=2,p=1`；存量 TS 哈希直接可验） |
 | 会话 | 服务端 session，DB 存 sha256 哈希 token，HttpOnly + SameSite=Lax cookie |
-| 校验 | Zod v4（schema + 类型安全） |
-| 任务 | transactional outbox + 进程内 worker（轮询 SQLite） |
-| 实时 | 进程内 EventBus → SSE 通道（`@fastify/sse`） |
+| 校验 | Pydantic v2（`extra='ignore'` 复刻 zod strip） |
+| 任务 | transactional outbox + 进程内 worker 线程（`main()` 启动，轮询 SQLite） |
+| 实时 | 进程内 EventBus → SSE 通道（StreamingResponse） |
 | 附件 | 本地磁盘 + HMAC 签名 URL（presigned-URL 语义） |
 | 邮件 | Console 打日志（Mailer 接口预留 SMTP 实现） |
-| 测试 | Vitest（`app.inject()` 集成测试 + 纯逻辑单测） |
+| 定时备份 | apscheduler（VACUUM INTO） |
+| 测试 | pytest（FastAPI TestClient；SSE 用真实 uvicorn + httpx 流式） |
 
-> **环境适配**：目标蓝图是 PostgreSQL + Redis + BullMQ + S3 + SMTP。本机无 Docker/PG/Redis/S3/SMTP，所有基础设施都收敛为**接口 + 内存/本地实现**。换生产环境时只替换 `src/infrastructure/` 下的具体实现，业务模块零改动。
+> 契约与 TS 版 1:1（路径/方法/错误包络/DTO/SSE 事件），前端零改动。HTTP 面以 `docs/openapi.json`（FastAPI 导出）为准。
 
 ## 2. 模块划分
 
 ```
-src/
-  app/            # Fastify 装配、路由挂载、全局钩子、DI 容器、统一错误处理
-  authz/          # can() 能力矩阵——全站授权唯一入口
-  auth/           # 注册/验证/登录/会话/密码找回
-  users/          # 个人资料、公开主页
-  schools/        # 学校 + 邮箱域名 allowlist
-  boards/         # 动态板块实体（visibility/postingPolicy/成员/软删）
-  discussions/    # 帖子：列表/详情/发布/软删/回复/置顶/锁定/save/follow
-  follows/        # 用户关注
-  notifications/  # 通知：生成/列表/已读 + outbox 副作用
-  search/         # 搜索（SQLite LIKE 子串回退）
-  presence/       # 在线状态心跳
-  realtime/       # SSE /api/events 通道
+src/samryetha/
+  main.py        # FastAPI 装配、中间件、统一错误、lifespan；main() 起 worker/备份
+  schema.py      # 显式 Table 定义（唯一 schema 真源）
+  db.py          # 引擎/PRAGMA/请求级事务
+  errors.py      # ApiError + 422/400/429/500 处理器
+  authz.py       # can() 能力矩阵——全站授权唯一入口
+  deps.py        # require_user / require_active_user / DbConn
+  auth.py users.py follows.py boards.py discussions.py attachments.py search.py
+  notifications.py moderation.py admin.py feedback.py feedback_backup.py
+  presence.py events.py outbox.py outbox_worker.py mailer.py markdown.py security.py storage.py
+  routers/       # 每特性一组 APIRouter（路径与 TS 对齐）
+```
   attachments/    # presign→上传→绑定→下载
   moderation/     # 举报/封禁/审计/内容恢复
   feedback/       # 反馈：项目/成员(程序员)/条目 + Agent API + 备份恢复

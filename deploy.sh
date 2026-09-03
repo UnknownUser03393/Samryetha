@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 #
 # Samryetha 一键部署脚本（Ubuntu / pm2 / nginx，可选 SSL）
+# 后端：Python(FastAPI, uv)，前端：React(express SSR)
 #
 # 用法：
 #   ./deploy.sh                                # 用本机 IP，http
@@ -14,8 +15,7 @@
 #   ALLOWED_EMAIL_DOMAINS  注册邮箱域名白名单，缺省 example.edu.cn
 #   ADMIN_PASSWORD / DEV_PASSWORD  内置账号密码；缺省随机生成并打印
 #
-# 前置要求（脚本只检查不自动安装）：
-#   node >= 20、pnpm、pm2、nginx
+# 前置要求（脚本只检查不自动安装）：python3、uv、node>=20、pnpm、pm2、nginx
 
 set -euo pipefail
 
@@ -34,22 +34,22 @@ FRONTEND="$ROOT/frontend"
 # ------------------------------------------------------------------ 工具
 step() { printf '\n\033[1;36m[%s/9] %s\033[0m\n' "$1" "$2"; }
 die() { printf '\033[1;31m[x] %s\033[0m\n' "$*" >&2; exit 1; }
-
 require() { command -v "$1" >/dev/null 2>&1 || die "缺少 $1，请先安装再运行：$2"; }
 
 # ------------------------------------------------------------------ 1. 前置检查
 step 1 "检查环境"
+require uv "curl -LsSf https://astral.sh/uv/install.sh | sh"
+require python3 "sudo apt install -y python3"
 require node "curl -fsSL https://deb.nodesource.com/setup_22.x | sudo bash - && sudo apt install -y nodejs"
 NODE_MAJOR="$(node -p 'process.versions.node.split(".")[0]')"
 [ "$NODE_MAJOR" -ge 20 ] || die "需要 Node >= 20，当前 $(node -v)"
 require pnpm "npm i -g pnpm"
 require pm2 "npm i -g pm2"
 require nginx "sudo apt install -y nginx"
-echo "[ok] node $(node -v) / pnpm $(pnpm -v)"
+echo "[ok] python3 $(python3 --version) / uv $(uv --version) / node $(node -v)"
 
 # ------------------------------------------------------------------ 2. 解析变量
 step 2 "解析配置"
-# DOMAIN 缺省时用本机 IP；IS_IP 标记用于 SSL 判断（IP 无法签证书）。
 IS_IP=0
 if [ -z "$DOMAIN" ]; then
   IP="$(hostname -I 2>/dev/null | awk '{print $1}')"
@@ -64,9 +64,9 @@ echo "  app_origin  : $APP_ORIGIN"
 echo "  email_domains: $ALLOWED_EMAIL_DOMAINS"
 
 # ------------------------------------------------------------------ 3. 安装依赖
-step 3 "安装依赖（含 devDependencies，build 需要）"
+step 3 "安装依赖"
 cd "$BACKEND"
-pnpm install --prod=false
+uv sync --frozen
 cd "$FRONTEND"
 pnpm install --prod=false
 cd "$ROOT"
@@ -97,10 +97,8 @@ EOF
   echo "    （请妥善保存；如需改，编辑 $ENV_FILE 后重启）"
 fi
 
-# ------------------------------------------------------------------ 5. 构建
-step 5 "构建后端 + 前端"
-cd "$BACKEND"
-pnpm build
+# ------------------------------------------------------------------ 5. 构建前端
+step 5 "构建前端（后端 Python 无需编译）"
 cd "$FRONTEND"
 pnpm build
 cd "$ROOT"
@@ -109,7 +107,7 @@ cd "$ROOT"
 step 6 "pm2 启动服务"
 pm2 delete samryetha-backend >/dev/null 2>&1 || true
 pm2 delete samryetha-frontend >/dev/null 2>&1 || true
-pm2 start "$BACKEND/dist/app/server.js" --name samryetha-backend --cwd "$BACKEND"
+pm2 start "$BACKEND/start.sh" --name samryetha-backend --cwd "$BACKEND"
 NODE_ENV=production API_TARGET=http://127.0.0.1:3001 pm2 start "$FRONTEND/server.mjs" --name samryetha-frontend --cwd "$FRONTEND"
 pm2 save
 echo "[ok] pm2 进程：samryetha-backend / samryetha-frontend"
@@ -152,7 +150,6 @@ if [ "$SSL" = "1" ]; then
   else
     require certbot "sudo apt install -y certbot python3-certbot-nginx"
     sudo certbot --nginx -d "$DOMAIN" --redirect --non-interactive --agree-tos || true
-    # 非交互失败（如邮箱/条款问题）时退回手动引导
     sudo certbot --nginx -d "$DOMAIN" --redirect || echo "[!] certbot 交互式续跑失败，请手动执行：sudo certbot --nginx -d $DOMAIN"
     echo "[ok] HTTPS 已配置"
   fi
@@ -162,7 +159,7 @@ fi
 
 # ------------------------------------------------------------------ 9. 健康检查
 step 9 "健康检查"
-sleep 3
+sleep 4
 curl -fsS http://localhost:3001/api/health >/dev/null && echo "[ok] 后端   http://localhost:3001/api/health → 200" || die "后端健康检查失败"
 curl -fsS -o /dev/null http://localhost:3000/login && echo "[ok] 前端   http://localhost:3000/login → 200" || die "前端健康检查失败"
 
