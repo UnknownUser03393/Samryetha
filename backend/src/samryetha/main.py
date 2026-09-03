@@ -279,9 +279,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     build_error_body(ErrorCode.BAD_REQUEST, "Request body must not be empty", _request_id(request)),
                 )
         details = [_validation_detail(e) for e in exc.errors()]
+        # 把具体字段错误拼进 message，避免只返回笼统的 "Validation failed"
+        summary = "; ".join(f"{d['field']}: {d['message']}" for d in details)
         return JSONEnvelope(
             422,
-            build_error_body(ErrorCode.VALIDATION_ERROR, "Validation failed", _request_id(request), details),
+            build_error_body(
+                ErrorCode.VALIDATION_ERROR,
+                f"Validation failed — {summary}" if summary else "Validation failed",
+                _request_id(request),
+                details,
+            ),
         )
 
     @app.exception_handler(Exception)
