@@ -327,7 +327,7 @@ input:-webkit-autofill:active {
 .profile-copy h1 { margin: 0; font-size: 27px; line-height: 1.08; letter-spacing: -.035em; font-weight: 650; }
 .profile-handle { margin: 5px 0 0; color: var(--muted); font-size: 12px; }
 .profile-bio { max-width: 480px; margin: 13px 0 0; color: var(--muted); font-size: 13.5px; line-height: 1.6; }
-.edit-profile { height: 36px; padding: 0 13px; border: 1px solid var(--line); border-radius: 999px; background: transparent; color: var(--muted); font-size: 12px; transition: color .14s ease, border-color .14s ease, background .14s ease; }
+.edit-profile { display: inline-flex; align-items: center; justify-content: center; height: 36px; padding: 0 13px; border: 1px solid var(--line); border-radius: 999px; background: transparent; color: var(--muted); font-size: 12px; white-space: nowrap; transition: color .14s ease, border-color .14s ease, background .14s ease; }
 .edit-profile:hover { border-color: color-mix(in srgb, var(--accent) 40%, var(--line)); background: color-mix(in srgb, var(--accent-soft) 42%, transparent); color: var(--ink); }
 .profile-stats { display: flex; gap: 34px; margin: 34px 0 0; padding: 18px 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
 .profile-stats div { display: flex; align-items: baseline; gap: 7px; }
