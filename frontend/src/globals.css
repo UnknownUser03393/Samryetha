@@ -441,12 +441,12 @@ input:-webkit-autofill:active {
 .login-primary:focus-visible, .login-label-row a:focus-visible, .login-register a:focus-visible, .auth-back:focus-visible, .password-visibility:focus-visible, .register-terms button:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 
 @media (max-width: 900px) {
-  .page { grid-template-columns: 1fr; gap: 0; padding-top: 30px; }
+  .page { grid-template-columns: minmax(0, 1fr); gap: 0; padding-top: 30px; }
   .now, .primary-nav { display: none; }
   .search-field { width: min(34vw, 220px); }
-  .post-layout { grid-template-columns: 1fr; gap: 0; }
+  .post-layout { grid-template-columns: minmax(0, 1fr); gap: 0; }
   .post-aside { display: none; }
-  .profile-layout { grid-template-columns: 1fr; gap: 0; }
+  .profile-layout { grid-template-columns: minmax(0, 1fr); gap: 0; }
   .profile-aside { display: none; }
   .settings-layout { grid-template-columns: 160px minmax(0, 1fr); gap: 40px; }
 }
@@ -486,7 +486,7 @@ input:-webkit-autofill:active {
   .profile-actions { flex: 0 0 auto; margin-left: auto; }
   .profile-stats { gap: 20px; overflow-x: auto; }
   .profile-tabs { margin-top: 24px; }
-  .settings-layout { grid-template-columns: 1fr; gap: 28px; padding: 28px 0 72px; }
+  .settings-layout { grid-template-columns: minmax(0, 1fr); gap: 28px; padding: 28px 0 72px; }
   .settings-sidebar { position: static; }
   .settings-sidebar h1 { margin-bottom: 20px; font-size: 26px; }
   .settings-nav { flex-direction: row; gap: 5px; overflow-x: auto; padding-bottom: 2px; scrollbar-width: none; }
@@ -499,6 +499,34 @@ input:-webkit-autofill:active {
   .login-page { padding: 42px 14px 28px; }
   .login-card { border-radius: 14px; }
   .login-card-content { padding: 25px 22px; }
+  /* 顶栏收紧：窄屏下搜索框收成放大镜图标，placeholder 不再被截断 */
+  .topbar-inner { gap: 12px; }
+  .search-field { flex: 0 0 auto; width: 40px; min-width: 40px; padding: 0; justify-content: center; }
+  .search-field:not(:focus-within) input { width: 0; }
+  /* 聚焦搜索时展开占满顶栏剩余空间（不支持 :has 的老浏览器原地降级） */
+  .topbar-inner:has(.search-field:focus-within) { justify-content: flex-end; }
+  .topbar-inner:has(.search-field:focus-within) .wordmark,
+  .topbar-inner:has(.search-field:focus-within) .user-menu { display: none; }
+  .topbar-inner:has(.search-field:focus-within) .actions { flex: 1 1 auto; }
+  .search-field:focus-within {
+    flex: 1 1 auto; width: auto; min-width: 0;
+    padding: 0 9px 0 11px; justify-content: flex-start;
+  }
+  /* 深回复缩进砍半，正文宽度优先 */
+  .reply-branch { --reply-indent: min(calc(var(--reply-depth) * 14px), 56px); }
+  /* iOS Safari：聚焦字号 <16px 的输入框会强制缩放整个页面，观感即"页面看不全" */
+  .search-field input,
+  .form-field input, .form-field textarea,
+  .settings-form input, .settings-form textarea,
+  .login-field input,
+  .admin-inline-form input,
+  .fb-comment-form textarea, .message-compose textarea, .new-message textarea { font-size: 16px; }
+}
+
+@media (max-width: 480px) {
+  /* 320-480px：账号按钮只留头像，搜索框可自由收缩 */
+  .user-menu-name { display: none; }
+  .user-menu-trigger { padding: 0 6px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -595,6 +623,16 @@ input:-webkit-autofill:active {
 .replying-banner { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; color: var(--accent); font-size: 13px; }
 .reply-cancel { border: 0; background: none; color: var(--muted); cursor: pointer; font-size: 12px; }
 .reply-cancel:hover { color: var(--ink); }
+
+/* ---- 长内容溢出兜底（移动端尤其）：URL/代码/表格不得撑破版心 ---- */
+/* overflow-wrap: anywhere 同时压低 min-content，防止 grid 轨道被单个长词撑爆 */
+.thread-title, .thread-preview, .thread-detail-title, .thread-detail-body,
+.reply-body, .profile-bio, .board-description, .task-notes { overflow-wrap: anywhere; }
+.thread-detail-body code, .reply-body code { overflow-wrap: anywhere; }
+.reply-body img { max-width: 100%; border-radius: 10px; }
+.reply-body pre { background: var(--surface-2); padding: 14px; border-radius: 10px; overflow-x: auto; font-size: 13px; }
+.thread-detail-body table, .reply-body table { display: block; width: max-content; max-width: 100%; overflow-x: auto; }
+.reply-head, .thread-detail-meta { flex-wrap: wrap; }
 
 /* ---- Alert dialog (radix) ---- */
 .dialog-overlay {
@@ -762,7 +800,7 @@ html body[data-scroll-locked] {
 }
 
 @media (max-width: 640px) {
-  .admin-layout { grid-template-columns: 1fr; gap: 28px; padding: 28px 0 72px; }
+  .admin-layout { grid-template-columns: minmax(0, 1fr); gap: 28px; padding: 28px 0 72px; }
   .admin-stat-grid { grid-template-columns: repeat(2, 1fr); }
   .admin-row { flex-direction: column; gap: 12px; }
   .admin-row-actions { width: 100%; }
@@ -904,7 +942,7 @@ html body[data-scroll-locked] {
 .member-row input[type="checkbox"] { accent-color: var(--accent-fill); width: 14px; height: 14px; }
 
 @media (max-width: 900px) {
-  .feedback-layout { grid-template-columns: 1fr; gap: 0; padding-top: 30px; }
+  .feedback-layout { grid-template-columns: minmax(0, 1fr); gap: 0; padding-top: 30px; }
   .feedback-sidebar { position: static; }
 }
 @media (max-width: 640px) {
@@ -965,7 +1003,7 @@ html body[data-scroll-locked] {
 .tasks-modal .form-field { margin-bottom: 14px; }
 
 @media (max-width: 900px) {
-  .tasks-layout { grid-template-columns: 1fr; gap: 0; padding-top: 30px; }
+  .tasks-layout { grid-template-columns: minmax(0, 1fr); gap: 0; padding-top: 30px; }
   .tasks-sidebar { position: static; }
   .tasks-sidebar-head { margin-bottom: 16px; }
   .tasks-new { max-width: 240px; }
@@ -1035,7 +1073,7 @@ html body[data-scroll-locked] {
 
 @media (max-width: 640px) {
   .inbox-header { flex-direction: column; gap: 12px; }
-  .inbox-messages { grid-template-columns: 1fr; }
+  .inbox-messages { grid-template-columns: minmax(0, 1fr); }
   .conversation-list { border-right: 0; border-bottom: 1px solid var(--line); max-height: 220px; }
   .user-menu-name { max-width: 72px; }
 }
