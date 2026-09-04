@@ -443,7 +443,7 @@ input:-webkit-autofill:active {
 @media (max-width: 900px) {
   .page { grid-template-columns: minmax(0, 1fr); gap: 0; padding-top: 30px; }
   .now, .primary-nav { display: none; }
-  .search-field { width: min(34vw, 220px); }
+  .topbar .search-field { width: min(34vw, 220px); }
   .post-layout { grid-template-columns: minmax(0, 1fr); gap: 0; }
   .post-aside { display: none; }
   .profile-layout { grid-template-columns: minmax(0, 1fr); gap: 0; }
@@ -456,7 +456,7 @@ input:-webkit-autofill:active {
   .topbar-inner { height: 56px; }
   .wordmark { font-size: 14px; }
   .compose { display: none; }
-  .search-field { width: 132px; height: 34px; }
+  .topbar .search-field { width: 132px; height: 34px; }
   .actions > .icon-btn { display: none; }
   .actions > .mobile-menu-trigger { display: grid; }
   .page { padding: 24px 0 48px; }
@@ -472,7 +472,7 @@ input:-webkit-autofill:active {
   .board-row { width: calc(100% + 16px); margin-left: -8px; padding: 18px 8px; gap: 12px; }
   .post-layout { padding: 24px 0 54px; }
   .post-heading { margin-bottom: 28px; }
-  .post-title-row { grid-template-columns: 1fr; }
+  .post-title-row { grid-template-columns: minmax(0, 1fr); }
   .compact-field { width: 100%; }
   .form-field textarea { min-height: 210px; }
   .editor-actions { align-items: flex-start; flex-direction: column; }
@@ -493,7 +493,7 @@ input:-webkit-autofill:active {
   .settings-nav::-webkit-scrollbar { display: none; }
   .settings-nav button { width: auto; flex: 0 0 auto; padding: 0 11px; }
   .settings-nav-accent { display: none; }
-  .settings-field-grid { grid-template-columns: 1fr; gap: 21px; }
+  .settings-field-grid { grid-template-columns: minmax(0, 1fr); gap: 21px; }
   .setting-row { gap: 18px; }
   .user-menu-popover { position: fixed; top: 62px; right: 14px; }
   .login-page { padding: 42px 14px 28px; }
@@ -501,16 +501,26 @@ input:-webkit-autofill:active {
   .login-card-content { padding: 25px 22px; }
   /* 顶栏收紧：窄屏下搜索框收成放大镜图标，placeholder 不再被截断 */
   .topbar-inner { gap: 12px; }
-  .search-field { flex: 0 0 auto; width: 40px; min-width: 40px; padding: 0; justify-content: center; }
-  .search-field:not(:focus-within) input { width: 0; }
-  /* 聚焦搜索时展开占满顶栏剩余空间（不支持 :has 的老浏览器原地降级） */
-  .topbar-inner:has(.search-field:focus-within) { justify-content: flex-end; }
-  .topbar-inner:has(.search-field:focus-within) .wordmark,
-  .topbar-inner:has(.search-field:focus-within) .user-menu { display: none; }
-  .topbar-inner:has(.search-field:focus-within) .actions { flex: 1 1 auto; }
-  .search-field:focus-within {
-    flex: 1 1 auto; width: auto; min-width: 0;
-    padding: 0 9px 0 11px; justify-content: flex-start;
+  .topbar .search-field { flex: 0 0 auto; width: 40px; min-width: 40px; padding: 0; justify-content: center; }
+  .topbar .search-field:not(:focus-within) input { width: 0; }
+  /* 支持 :has 的浏览器：聚焦搜索时展开占满顶栏剩余空间，并让 logo/账号让位 */
+  @supports selector(.topbar-inner:has(.search-field:focus-within)) {
+    .topbar-inner:has(.search-field:focus-within) { justify-content: flex-end; }
+    .topbar-inner:has(.search-field:focus-within) .wordmark,
+    .topbar-inner:has(.search-field:focus-within) .user-menu { display: none; }
+    .topbar-inner:has(.search-field:focus-within) .actions { flex: 1 1 auto; }
+    .topbar .search-field:focus-within {
+      flex: 1 1 auto; width: auto; min-width: 0;
+      padding: 0 9px 0 11px; justify-content: flex-start;
+    }
+  }
+  /* 不支持 :has 的浏览器：保留可输入的紧凑搜索框，不把 input 隐藏 */
+  @supports not selector(.topbar-inner:has(.search-field:focus-within)) {
+    .topbar .search-field:focus-within {
+      width: min(34vw, 220px); min-width: 0;
+      padding: 0 9px 0 11px; justify-content: flex-start;
+    }
+    .topbar .search-field:focus-within input { width: 100%; }
   }
   /* 深回复缩进砍半，正文宽度优先 */
   .reply-branch { --reply-indent: min(calc(var(--reply-depth) * 14px), 56px); }
@@ -527,6 +537,20 @@ input:-webkit-autofill:active {
   /* 320-480px：账号按钮只留头像，搜索框可自由收缩 */
   .user-menu-name { display: none; }
   .user-menu-trigger { padding: 0 6px; }
+}
+
+@media (max-width: 640px) {
+  /* 后台/任务/反馈列表的搜索框不属于顶栏收起控件，始终保留可输入宽度 */
+  .admin-filters .search-field,
+  .admin-filters .search-field:focus-within {
+    flex: 1 1 260px;
+    width: auto;
+    min-width: 0;
+    padding: 0 9px 0 11px;
+    justify-content: flex-start;
+  }
+  .admin-filters .search-field input,
+  .admin-filters .search-field:not(:focus-within) input { width: 100%; }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -947,7 +971,7 @@ html body[data-scroll-locked] {
 }
 @media (max-width: 640px) {
   .feedback-layout { padding: 24px 0 48px; }
-  .feedback-field-row { grid-template-columns: 1fr; }
+  .feedback-field-row { grid-template-columns: minmax(0, 1fr); }
 }
 
 /* ---- Tasks（开发任务追踪，独立页面 /tasks） ---- */
