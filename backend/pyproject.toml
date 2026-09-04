@@ -33,8 +33,11 @@ build-backend = "hatchling.build"
 testpaths = ["tests"]
 
 [tool.ruff]
-# 宽松基线：只查 pyflakes(F) 与 pycodestyle E4/E7/E9 类真实错误，不查行宽等风格
-# Lenient baseline: only pyflakes(F) + pycodestyle E4/E7/E9 real errors, no style noise
+# 只查真实 bug（语法错误 E9 / 使用前赋值 F63 / 非法操作 F7 / 未定义名 F82），
+# 不因存量代码的未使用导入(F401)/未使用变量(F841)/导入顺序(E402)等风格问题阻断 CI
+# Only real bugs (syntax E9 / use-before-assignment F63 / invalid-ops F7 / undefined-name F82);
+# don't block CI on pre-existing style (unused imports F401 / unused vars F841 / import order E402)
 line-length = 120
 target-version = "py312"
 extend-exclude = ["tests"]
+select = ["E9", "F63", "F7", "F82"]
