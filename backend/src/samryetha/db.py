@@ -62,7 +62,7 @@ class Database:
 
         schema.py 是唯一真源，但运行时直接打开既有 SQLite 不跑 DDL；当 schema 演进
         （如新增列）而库里还没有时，这里 ALTER TABLE ADD COLUMN 补齐。
-        只处理已经存在的表，缺表不管（建表走 create_schema / tasks 的 startup ensure）。
+        只处理已经存在的表；缺表交给 create_schema（create_all 幂等）。
         """
         from sqlalchemy import inspect as sa_inspect
         from sqlalchemy.dialects import sqlite as sqlite_dialect

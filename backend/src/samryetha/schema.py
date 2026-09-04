@@ -124,6 +124,7 @@ discussions = Table(
     Column("title", Text, nullable=False),
     Column("body_md", Text, nullable=False),
     Column("body_html", Text),
+    Column("body_format", Text, nullable=False, server_default="markdown"),  # markdown|text
     Column("reply_count", Integer, nullable=False, server_default="0"),
     Column("save_count", Integer, nullable=False, server_default="0"),
     Column("is_pinned", Integer, nullable=False, server_default="0"),
@@ -151,6 +152,7 @@ replies = Table(
     Column("parent_reply_id", ForeignKey("replies.id")),  # 自引用，表级声明
     Column("body_md", Text, nullable=False),
     Column("body_html", Text),
+    Column("body_format", Text, nullable=False, server_default="markdown"),  # markdown|text
     *_soft_delete(),
     _ms("created_at"),
     _ms("updated_at"),
@@ -387,6 +389,22 @@ feedback_items = Table(
     sqlite_autoincrement=True,
 )
 
+feedback_comments = Table(
+    "feedback_comments",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("item_id", ForeignKey("feedback_items.id"), nullable=False),
+    Column("author_id", ForeignKey("users.id"), nullable=False),
+    Column("parent_comment_id", ForeignKey("feedback_comments.id")),  # 自引用，嵌套评论
+    Column("body", Text, nullable=False),
+    *_soft_delete(),
+    _ms("created_at"),
+    _ms("updated_at"),
+    Index("feedback_comments_item_created_idx", "item_id", "created_at"),
+    Index("feedback_comments_parent_idx", "parent_comment_id"),
+    sqlite_autoincrement=True,
+)
+
 feedback_api_keys = Table(
     "feedback_api_keys",
     metadata,
@@ -434,6 +452,37 @@ app_settings = Table(
 )
 
 
+# ---------------------------------------------------------------- direct messages
+
+conversations = Table(
+    "conversations",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("user_a_id", ForeignKey("users.id"), nullable=False),
+    Column("user_b_id", ForeignKey("users.id"), nullable=False),
+    _ms("last_message_at"),
+    _ms("created_at"),
+    UniqueConstraint("user_a_id", "user_b_id", name="conversations_pair_unique"),
+    Index("conversations_user_a_idx", "user_a_id"),
+    Index("conversations_user_b_idx", "user_b_id"),
+    sqlite_autoincrement=True,
+)
+
+direct_messages = Table(
+    "direct_messages",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("conversation_id", ForeignKey("conversations.id"), nullable=False),
+    Column("sender_id", ForeignKey("users.id"), nullable=False),
+    Column("body", Text, nullable=False),
+    Column("source", Text, nullable=False, server_default="user"),  # 预留：其他平台接入
+    _ms("read_at"),
+    _ms("created_at"),
+    Index("direct_messages_conversation_idx", "conversation_id", "created_at"),
+    sqlite_autoincrement=True,
+)
+
+
 __all__ = [
     "metadata",
     "users",
@@ -446,6 +495,8 @@ __all__ = [
     "discussion_follows",
     "user_follows",
     "notifications",
+    "conversations",
+    "direct_messages",
     "attachments",
     "reports",
     "moderation_actions",
@@ -457,6 +508,7 @@ __all__ = [
     "feedback_projects",
     "feedback_project_members",
     "feedback_items",
+    "feedback_comments",
     "feedback_api_keys",
     "tasks",
     "app_settings",

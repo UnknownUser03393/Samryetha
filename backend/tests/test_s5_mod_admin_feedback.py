@@ -61,9 +61,9 @@ def test_reports_flow(api):
     api.login(author)
     assert api.c.get("/api/moderation/reports").status_code == 403
 
-    # moderator 能列
-    api.mkuser("mod1", role="moderator")
-    api.login("mod1")
+    # admin 能列（moderator 已并入 admin，#18）
+    api.mkuser("adm1", role="admin")
+    api.login("adm1")
     lst = api.c.get("/api/moderation/reports").json()
     assert len(lst["items"]) == 1
     assert lst["items"][0]["id"] == rep["id"]
@@ -81,9 +81,9 @@ def test_reports_flow(api):
 
 def test_ban_unban_restore_real(api):
     author, other, did = _members_thread(api)
-    # mod1 ban bob
-    api.mkuser("mod1", role="moderator")
-    api.login("mod1")
+    # adm1 (admin) ban bob（moderator 已并入 admin，#18）
+    api.mkuser("adm1", role="admin")
+    api.login("adm1")
     r = api.c.post(
         "/api/moderation/bans",
         json={"username": "bob", "reason": "spamming", "durationHours": 24},
@@ -100,14 +100,14 @@ def test_ban_unban_restore_real(api):
     api.login("bob")
     assert api.c.get("/api/auth/me").status_code == 200
 
-    # restore：alice 删自己帖子 → admin 删除清单可见 → mod2 恢复
+    # restore：alice 删自己帖子 → admin 删除清单可见 → adm2 (admin) 恢复
     api.login(author)
     assert api.c.request("DELETE", f"/api/discussions/{did}", json={"reason": "cleanup"}).json() == {"ok": True}
     api.login_dev()
     deleted = api.c.get("/api/admin/moderation/deleted").json()
     assert any(d["id"] == did for d in deleted["discussions"])
-    api.mkuser("mod2", role="moderator")
-    api.login("mod2")
+    api.mkuser("adm2", role="admin")
+    api.login("adm2")
     rest = api.c.post(
         "/api/moderation/restore",
         json={"targetType": "discussion", "targetId": did, "reason": "mistaken"},
@@ -124,7 +124,6 @@ def test_ban_unban_restore_real(api):
 def test_admin_stats_users_and_actions(api):
     api.mkuser("stu1")
     api.mkuser("stu2")
-    api.mkuser("mod1", role="moderator")
     # 一个 pending
     api.register("pend1")
     # dev = admin
@@ -159,11 +158,11 @@ def test_admin_stats_users_and_actions(api):
     # 已 verify 再 verify → conflict
     assert api.c.post(f"/api/admin/users/{pend_id}/verify").status_code == 409
 
-    # 改角色 → 升级 stu2 为 moderator，再降回
+    # 改角色 → 升级 stu2 为 admin，再改回已设角色 → 409（moderator 已并入 admin，#18，角色枚举仅 student/admin）
     stu2_id = api.c.get("/api/admin/users", params={"q": "stu2"}).json()["items"][0]["id"]
-    up = api.c.patch(f"/api/admin/users/{stu2_id}/role", json={"role": "moderator"}).json()
-    assert up["role"] == "moderator"
-    assert api.c.patch(f"/api/admin/users/{stu2_id}/role", json={"role": "moderator"}).status_code == 409
+    up = api.c.patch(f"/api/admin/users/{stu2_id}/role", json={"role": "admin"}).json()
+    assert up["role"] == "admin"
+    assert api.c.patch(f"/api/admin/users/{stu2_id}/role", json={"role": "admin"}).status_code == 409
     # 不能改自己
     me = api.c.get("/api/auth/me").json()["user"]
     assert api.c.patch(f"/api/admin/users/{me['id']}/role", json={"role": "student"}).status_code == 409

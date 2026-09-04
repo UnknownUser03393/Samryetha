@@ -20,7 +20,7 @@ from . import notifications
 from .db import Database, now_ms
 from .errors import internal_error  # noqa: F401  (保留引用，handler 里区分 404 语义用)
 from .mailer import ban_notification_text
-from .schema import discussion_follows, discussions, notifications as notifications_table, outbox_events, users
+from .schema import discussion_follows, discussions, notifications as notifications_table, outbox_events, replies, users
 
 logger = logging.getLogger("samryetha.outbox")
 
@@ -63,6 +63,13 @@ def _on_reply_created(conn, payload: dict) -> list[dict]:
     ).all()
     recipients = {disc.author_id}
     recipients.update(r.user_id for r in follows)
+    # 嵌套回复：被回复的那条评论的作者也应收到通知
+    # Nested reply: also notify the author of the parent reply being replied to
+    parent_reply_id = payload.get("parentReplyId")
+    if parent_reply_id:
+        parent = conn.execute(select(replies.c.author_id).where(replies.c.id == parent_reply_id)).first()
+        if parent is not None:
+            recipients.add(parent.author_id)
     recipients.discard(author_id)
     body = f"{actor_name} 回复了「{title}」"
     out: list[dict] = []
@@ -114,6 +121,15 @@ def _on_mention_created(conn, payload: dict) -> list[dict]:
     return _publish(user_id)
 
 
+def _on_message_created(conn, payload: dict) -> list[dict]:
+    # 私信：通知收件方，让其未读徽标实时刷新
+    # Direct message: notify the recipient so their unread badge refreshes in real time
+    recipient_id = payload.get("recipientId")
+    if not recipient_id:
+        return []
+    return _publish(recipient_id)
+
+
 def _on_user_followed(conn, payload: dict) -> list[dict]:
     follower_id = payload.get("followerId")
     followee_id = payload.get("followeeId")
@@ -155,6 +171,7 @@ def register_outbox_handlers(dispatcher: OutboxDispatcher, mailer=None) -> None:
         mailer = ConsoleMailer()
     dispatcher.on("reply.created", _on_reply_created)
     dispatcher.on("mention.created", _on_mention_created)
+    dispatcher.on("message.created", _on_message_created)
     dispatcher.on("user.followed", _on_user_followed)
     dispatcher.on("user.banned", lambda conn, payload: _on_user_banned(conn, payload, mailer))
 

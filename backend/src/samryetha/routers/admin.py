@@ -15,7 +15,7 @@ UserId = Annotated[int, Path(ge=1)]
 
 class ChangeRoleBody(BaseModel):
     model_config = ConfigDict(extra="ignore")
-    role: Literal["student", "moderator", "admin"]
+    role: Literal["student", "admin"]
     reason: str | None = Field(default=None, max_length=1000)
 
 
@@ -40,7 +40,7 @@ def list_users(
     user: CurrentUser = Depends(require_active_user),
     q: str | None = Query(default=None, max_length=100),
     status: Literal["pending", "active", "banned", "deactivated"] | None = Query(default=None),
-    role: Literal["student", "moderator", "admin"] | None = Query(default=None),
+    role: Literal["student", "admin"] | None = Query(default=None),
     cursor: int | None = Query(default=None, ge=1),
     limit: int = Query(default=20, ge=1, le=50),
 ) -> dict:

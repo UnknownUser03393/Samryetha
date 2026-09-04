@@ -248,3 +248,11 @@ def ensure_builtin_accounts(conn: Connection, settings: Settings) -> None:
                 updated_at=_now,
             )
         )
+
+
+def merge_moderator_roles(conn: Connection) -> None:
+    # 角色合并（功能3）：把全局 moderator 合并进 admin，现有 admin/mod 全部保留权限
+    # Role merge (feature 3): fold global moderator into admin, retaining all existing admin/mod permissions
+    conn.execute(
+        update(users_table).where(users_table.c.role == "moderator").values(role="admin")
+    )

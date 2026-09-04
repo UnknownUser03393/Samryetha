@@ -2,8 +2,9 @@ import type { ReactNode } from "react";
 import { UserMenu } from "./user-menu";
 import { MobileMenu } from "./mobile-menu";
 import { SearchIcon } from "./icons";
+import { InboxIcon } from "./inbox-icon";
 
-export type ShellLocation = "post" | "profile" | "settings" | "feedback" | "tasks";
+export type ShellLocation = "post" | "profile" | "settings" | "feedback" | "tasks" | "inbox";
 export type ShellView = "latest" | "followed" | "boards";
 
 // 统一外壳：topbar（wordmark + 导航 + 搜索 + 汉堡菜单 + UserMenu + Post）。
@@ -49,6 +50,7 @@ export function AppShell({
             )}
             <MobileMenu activeView={activeView} />
             <UserMenu current={current === "profile" || current === "settings" ? current : undefined} />
+            <InboxIcon />
             <a className="compose" href="/post" aria-current={current === "post" ? "page" : undefined}>Post</a>
           </div>
         </div>

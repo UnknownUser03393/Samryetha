@@ -126,6 +126,7 @@ export function ProfilePage() {
                   </div>
                 ) : user ? (
                   <div className="profile-actions">
+                    <a className="edit-profile" href={`/inbox?to=${encodeURIComponent(profile?.username ?? targetUsername ?? "")}`}>Message</a>
                     <button className={`edit-profile ${profile?.isFollowing ? "following" : ""}`} type="button" onClick={followUser}>
                       {profile?.isFollowing ? "Following" : "Follow"}
                     </button>

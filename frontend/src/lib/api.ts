@@ -3,8 +3,9 @@
 
 export type AuthorRef = { id: number; username: string; handle: string; displayName: string };
 export type BoardRef = { id: number; slug: string; name: string };
-export type UserRole = "student" | "moderator" | "admin";
+export type UserRole = "student" | "admin";
 export type UserStatus = "pending" | "active" | "banned" | "deactivated";
+export type BodyFormat = "markdown" | "text";
 
 export type ThreadSummary = {
   id: number;
@@ -22,6 +23,7 @@ export type ThreadSummary = {
 export type DiscussionDetail = ThreadSummary & {
   bodyMarkdown: string;
   bodyHtml: string | null;
+  bodyFormat: BodyFormat;
   saveCount: number;
   isSaved: boolean;
   isFollowing: boolean;
@@ -35,6 +37,7 @@ export type ReplyDTO = {
   author: AuthorRef;
   bodyMarkdown: string;
   bodyHtml: string | null;
+  bodyFormat: BodyFormat;
   isDeleted: boolean;
   createdAt: number;
   updatedAt: number;
@@ -94,6 +97,23 @@ export type NotificationDTO = {
   body: string | null;
   discussionId: number | null;
   replyId: number | null;
+  isRead: boolean;
+  createdAt: number;
+};
+
+export type ConversationSummary = {
+  id: number;
+  otherUser: AuthorRef;
+  lastMessage: { body: string; senderId: number; createdAt: number } | null;
+  unreadCount: number;
+  lastMessageAt: number;
+};
+
+export type DirectMessage = {
+  id: number;
+  senderId: number;
+  body: string;
+  source: string;
   isRead: boolean;
   createdAt: number;
 };
@@ -200,6 +220,17 @@ export type FeedbackItem = {
   status: FeedbackStatus;
   closedAt: number | null;
   editedAt: number | null;
+  createdAt: number;
+  updatedAt: number;
+};
+
+export type FeedbackComment = {
+  id: number;
+  itemId: number;
+  parentCommentId: number | null;
+  author: AuthorRef;
+  body: string;
+  isDeleted: boolean;
   createdAt: number;
   updatedAt: number;
 };
@@ -359,9 +390,9 @@ export const api = {
     boardFeed: (slug: string, cursor?: string) =>
       apiFetch<FeedPage<ThreadSummary>>(`/api/boards/${encodeURIComponent(slug)}/discussions${qs({ cursor })}`),
     get: (id: number) => apiFetch<DiscussionDetail>(`/api/discussions/${id}`),
-    create: (body: { boardSlug: string; title: string; bodyMarkdown: string }) =>
+    create: (body: { boardSlug: string; title: string; bodyMarkdown: string; bodyFormat?: BodyFormat }) =>
       apiFetch<DiscussionDetail>("/api/discussions", { method: "POST", body }),
-    update: (id: number, body: { title?: string; bodyMarkdown?: string }) =>
+    update: (id: number, body: { title?: string; bodyMarkdown?: string; bodyFormat?: BodyFormat }) =>
       apiFetch<DiscussionDetail>(`/api/discussions/${id}`, { method: "PATCH", body }),
     del: (id: number) => apiFetch<void>(`/api/discussions/${id}`, { method: "DELETE", body: {} }),
     save: (id: number) => apiFetch<void>(`/api/discussions/${id}/save`, { method: "POST" }),
@@ -371,9 +402,9 @@ export const api = {
     pin: (id: number) => apiFetch<void>(`/api/discussions/${id}/pin`, { method: "POST" }),
     lock: (id: number) => apiFetch<void>(`/api/discussions/${id}/lock`, { method: "POST" }),
     replies: (id: number) => apiFetch<{ items: ReplyDTO[] }>(`/api/discussions/${id}/replies`),
-    createReply: (id: number, body: { bodyMarkdown: string; parentReplyId?: number | null }) =>
+    createReply: (id: number, body: { bodyMarkdown: string; bodyFormat?: BodyFormat; parentReplyId?: number | null }) =>
       apiFetch<ReplyDTO>(`/api/discussions/${id}/replies`, { method: "POST", body }),
-    updateReply: (id: number, body: { bodyMarkdown: string }) => apiFetch<ReplyDTO>(`/api/replies/${id}`, { method: "PATCH", body }),
+    updateReply: (id: number, body: { bodyMarkdown: string; bodyFormat?: BodyFormat }) => apiFetch<ReplyDTO>(`/api/replies/${id}`, { method: "PATCH", body }),
     delReply: (id: number) => apiFetch<void>(`/api/replies/${id}`, { method: "DELETE", body: {} }),
   },
 
@@ -383,6 +414,14 @@ export const api = {
     unreadCount: () => apiFetch<{ unreadCount: number }>("/api/notifications/unread-count"),
     markRead: (id: number) => apiFetch<{ ok: boolean }>(`/api/notifications/${id}/read`, { method: "POST" }),
     markAllRead: () => apiFetch<{ ok: boolean }>("/api/notifications/read-all", { method: "POST" }),
+  },
+
+  messages: {
+    conversations: () => apiFetch<{ items: ConversationSummary[] }>("/api/messages/conversations"),
+    list: (id: number) => apiFetch<{ items: DirectMessage[]; otherUser: AuthorRef }>(`/api/messages/conversations/${id}`),
+    send: (body: { username: string; body: string }) => apiFetch<{ conversationId: number }>("/api/messages", { method: "POST", body }),
+    markRead: (id: number) => apiFetch<{ ok: boolean }>(`/api/messages/conversations/${id}/read`, { method: "POST" }),
+    unreadCount: () => apiFetch<{ unreadCount: number }>("/api/messages/unread-count"),
   },
 
   admin: {
@@ -434,6 +473,12 @@ export const api = {
     del: (id: number) => apiFetch<void>(`/api/feedback/${id}`, { method: "DELETE", body: {} }),
     setStatus: (id: number, status: FeedbackStatus) =>
       apiFetch<FeedbackItem>(`/api/feedback/${id}/status`, { method: "POST", body: { status } }),
+    comments: (id: number) => apiFetch<{ items: FeedbackComment[] }>(`/api/feedback/${id}/comments`),
+    createComment: (id: number, body: { body: string; parentCommentId?: number | null }) =>
+      apiFetch<FeedbackComment>(`/api/feedback/${id}/comments`, { method: "POST", body }),
+    updateComment: (id: number, body: { body: string }) =>
+      apiFetch<FeedbackComment>(`/api/feedback/comments/${id}`, { method: "PATCH", body }),
+    delComment: (id: number) => apiFetch<void>(`/api/feedback/comments/${id}`, { method: "DELETE", body: {} }),
   },
 
   feedbackAdmin: {
