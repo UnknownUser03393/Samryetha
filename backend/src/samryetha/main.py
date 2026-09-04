@@ -345,10 +345,11 @@ def main() -> None:
     from .outbox_worker import OutboxWorker
 
     # 启动时幂等确保内建 admin/dev（镜像 TS main 的 ensureBuiltInAccounts）
-    from .auth import ensure_builtin_accounts
+    from .auth import ensure_builtin_accounts, merge_moderator_roles
 
     with app.state.db.request_conn() as conn:
         ensure_builtin_accounts(conn, settings)
+        merge_moderator_roles(conn)
 
     # 生产入口才启动 outbox worker（测试用 app.state.flush_outbox 确定性消费）
     worker = OutboxWorker(

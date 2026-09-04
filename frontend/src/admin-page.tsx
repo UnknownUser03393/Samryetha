@@ -29,7 +29,6 @@ const STATUS_PILLS: { key: UserStatus | "all"; label: string }[] = [
 const ROLE_OPTIONS: { key: UserRole | "all"; label: string }[] = [
   { key: "all", label: "All roles" },
   { key: "student", label: "Student" },
-  { key: "moderator", label: "Moderator" },
   { key: "admin", label: "Admin" },
 ];
 
@@ -326,7 +325,7 @@ function UsersSection({ onNotify }: { onNotify: (message: string) => void }) {
               </div>
               <div className="admin-row-actions" data-busy={busyId === user.id || undefined} aria-label={`Actions for ${user.displayName}`}>
                 <SDropdown
-                  items={["student", "moderator", "admin"] as UserRole[]}
+                  items={["student", "admin"] as UserRole[]}
                   value={user.role}
                   onChange={(nextRole) => void runAction(user, () => api.admin.changeRole(user.id, { role: nextRole }), "Role updated.")}
                   getKey={(item) => item}

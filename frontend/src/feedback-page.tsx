@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
 import * as AlertDialog from "@radix-ui/react-alert-dialog";
 import { AppShell } from "./app-shell";
 import { Loading } from "./loading";
 import {
   api,
   ApiError,
+  type FeedbackComment,
   type FeedbackItem,
   type FeedbackProjectSummary,
   type FeedbackStatus,
@@ -43,6 +44,10 @@ export function FeedbackPage() {
   const [form, setForm] = useState({ title: "", detail: "", type: "suggestion" as FeedbackType, urgency: "normal" as FeedbackUrgency });
   const [formError, setFormError] = useState("");
   const [confirmDelete, setConfirmDelete] = useState<FeedbackItem | null>(null);
+  const [expandedItemId, setExpandedItemId] = useState<number | null>(null);
+  const [commentsByItem, setCommentsByItem] = useState<Record<number, FeedbackComment[]>>({});
+  const [commentDraft, setCommentDraft] = useState("");
+  const [replyingTo, setReplyingTo] = useState<number | null>(null);
 
   useEffect(() => {
     if (!user) return;
@@ -182,10 +187,84 @@ export function FeedbackPage() {
     setConfirmDelete(null);
   };
 
+  const loadComments = async (itemId: number) => {
+    try {
+      const data = await api.feedback.comments(itemId);
+      setCommentsByItem((prev) => ({ ...prev, [itemId]: data.items }));
+    } catch {
+      setCommentsByItem((prev) => ({ ...prev, [itemId]: [] }));
+    }
+  };
+
+  const toggleComments = (itemId: number) => {
+    if (expandedItemId === itemId) {
+      setExpandedItemId(null);
+      return;
+    }
+    setExpandedItemId(itemId);
+    setReplyingTo(null);
+    setCommentDraft("");
+    void loadComments(itemId);
+  };
+
+  const submitComment = async (itemId: number, parentCommentId: number | null) => {
+    if (!commentDraft.trim()) return;
+    try {
+      await api.feedback.createComment(itemId, { body: commentDraft.trim(), parentCommentId });
+      setCommentDraft("");
+      setReplyingTo(null);
+      await loadComments(itemId);
+    } catch {
+      setLoadError("Failed to post comment.");
+    }
+  };
+
+  const renderCommentsSection = (item: FeedbackItem): ReactNode => {
+    // 按 parentCommentId 分组，递归渲染嵌套评论（与帖子回复一致）
+    // Group by parentCommentId and render nested comments recursively (consistent with post replies)
+    const itemComments = commentsByItem[item.id] ?? [];
+    const byParent = new Map<number | null, FeedbackComment[]>();
+    for (const c of itemComments) {
+      const group = byParent.get(c.parentCommentId) ?? [];
+      group.push(c);
+      byParent.set(c.parentCommentId, group);
+    }
+    const renderNested = (parentId: number | null, depth: number): ReactNode => (
+      <>
+        {(byParent.get(parentId) ?? []).map((c) => (
+          <div className="fb-comment" key={c.id} style={{ marginLeft: depth > 0 ? 18 : 0 }}>
+            <div className="fb-comment-head">
+              <b>{c.author.handle}</b> · {formatTime(c.createdAt)}
+              <button type="button" className="reply-action" onClick={() => setReplyingTo(c.id)}>Reply</button>
+            </div>
+            <div className="fb-comment-body">{c.body}</div>
+            {renderNested(c.id, depth + 1)}
+          </div>
+        ))}
+      </>
+    );
+    return (
+      <div className="fb-comments">
+        {itemComments.length === 0 && <div className="empty-state">No comments yet.</div>}
+        {renderNested(null, 0)}
+        <div className="fb-comment-form">
+          {replyingTo !== null && (
+            <span className="replying-banner">
+              Replying to a comment <button type="button" className="reply-cancel" onClick={() => setReplyingTo(null)}>Cancel</button>
+            </span>
+          )}
+          <textarea value={commentDraft} onChange={(e) => setCommentDraft(e.target.value)} rows={2} maxLength={5000} placeholder={replyingTo !== null ? "Write a reply…" : "Write a comment…"} />
+          <button type="button" className="primary-action" disabled={!commentDraft.trim()} onClick={() => void submitComment(item.id, replyingTo)}>Post comment</button>
+        </div>
+      </div>
+    );
+  };
+
   const renderRow = (item: FeedbackItem) => {
     const isOwner = item.author.id === me;
     const canEdit = isOwner || canManage;
     return (
+      <>
       <div className="admin-row" key={item.id}>
         <div className="admin-row-main">
           <strong>
@@ -213,6 +292,7 @@ export function FeedbackPage() {
           {canManage && item.status !== "open" && (
             <button className="admin-btn" type="button" onClick={() => void setStatus(item, "open")}>Restore</button>
           )}
+          <button className="admin-btn" type="button" onClick={() => toggleComments(item.id)}>Comments</button>
           {canEdit && (
             <>
               <button className="admin-btn" type="button" onClick={() => openEdit(item)}>Edit</button>
@@ -242,6 +322,8 @@ export function FeedbackPage() {
           )}
         </div>
       </div>
+      {expandedItemId === item.id && renderCommentsSection(item)}
+      </>
     );
   };
 

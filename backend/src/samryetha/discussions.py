@@ -14,7 +14,7 @@ from sqlalchemy.engine import Connection
 from .authz import Abilities, assert_can, can
 from .boards import get_board_for_authz
 from .db import now_ms
-from .errors import forbidden, internal_error, not_found, validation_failed
+from .errors import conflict, forbidden, internal_error, not_found, validation_failed
 from .markdown import render_markdown
 from .outbox import emit_event
 from .schema import (
@@ -57,7 +57,7 @@ def visible_board_ids(conn: Connection, viewer) -> list[int]:
         select(boards.c.id, boards.c.visibility).where(boards.c.deleted_at.is_(None))
     ).all()
     all_ids = [r.id for r in all_rows]
-    if viewer is not None and viewer.role in ("admin", "moderator"):
+    if viewer is not None and viewer.role == "admin":
         return all_ids
     member_ids: set[int] = set()
     if viewer is not None:
@@ -140,7 +140,7 @@ def _rows_for(conn: Connection, conds) -> list:
     stmt = (
         select(*cols)
         .where(and_(*conds))
-        .order_by(_activity().desc(), discussions.c.id.desc())
+        .order_by(discussions.c.is_pinned.desc(), _activity().desc(), discussions.c.id.desc())
     )
     return conn.execute(stmt).all()
 
@@ -294,6 +294,10 @@ def list_discussions(conn: Connection, viewer, opts: dict) -> dict:
     has_more = len(rows) > limit
     page = rows[:limit] if has_more else rows
     items = to_threads(conn, page)
+    # announcement 分区：没有手动置顶时自动置顶最新公告
+    # Announcement board: auto-pin the latest announcement when nothing is manually pinned
+    if opts.get("boardSlug") == "announcements" and items and not any(it["isPinned"] for it in items):
+        items[0]["isPinned"] = True
     next_cursor = None
     if has_more and items:
         last = items[-1]
@@ -679,6 +683,23 @@ def _toggle(conn: Connection, actor, discussion_id: int, field: str) -> None:
     ability = Abilities.DISCUSSION_PIN if field == "is_pinned" else Abilities.DISCUSSION_LOCK
     assert_can(actor, ability, res, conn)
     new_val = 0 if d[field] == 1 else 1
+    if field == "is_pinned" and new_val == 1:
+        # 每分区置顶上限 5 个
+        # Per-board pin limit of 5
+        pinned_count = (
+            conn.execute(
+                select(func.count())
+                .select_from(discussions)
+                .where(
+                    (discussions.c.board_id == d["board_id"])
+                    & (discussions.c.is_pinned == 1)
+                    & (discussions.c.deleted_at.is_(None))
+                )
+            ).scalar()
+            or 0
+        )
+        if pinned_count >= 5:
+            raise conflict("This board already has 5 pinned discussions")
     conn.execute(update(discussions).where(discussions.c.id == discussion_id).values(**{field: new_val}))
 
 
