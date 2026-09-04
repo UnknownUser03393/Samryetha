@@ -3,7 +3,7 @@
 
 export type AuthorRef = { id: number; username: string; handle: string; displayName: string };
 export type BoardRef = { id: number; slug: string; name: string };
-export type UserRole = "student" | "moderator" | "admin";
+export type UserRole = "student" | "admin";
 export type UserStatus = "pending" | "active" | "banned" | "deactivated";
 
 export type ThreadSummary = {
@@ -200,6 +200,17 @@ export type FeedbackItem = {
   status: FeedbackStatus;
   closedAt: number | null;
   editedAt: number | null;
+  createdAt: number;
+  updatedAt: number;
+};
+
+export type FeedbackComment = {
+  id: number;
+  itemId: number;
+  parentCommentId: number | null;
+  author: AuthorRef;
+  body: string;
+  isDeleted: boolean;
   createdAt: number;
   updatedAt: number;
 };
@@ -414,6 +425,12 @@ export const api = {
     del: (id: number) => apiFetch<void>(`/api/feedback/${id}`, { method: "DELETE", body: {} }),
     setStatus: (id: number, status: FeedbackStatus) =>
       apiFetch<FeedbackItem>(`/api/feedback/${id}/status`, { method: "POST", body: { status } }),
+    comments: (id: number) => apiFetch<{ items: FeedbackComment[] }>(`/api/feedback/${id}/comments`),
+    createComment: (id: number, body: { body: string; parentCommentId?: number | null }) =>
+      apiFetch<FeedbackComment>(`/api/feedback/${id}/comments`, { method: "POST", body }),
+    updateComment: (id: number, body: { body: string }) =>
+      apiFetch<FeedbackComment>(`/api/feedback/comments/${id}`, { method: "PATCH", body }),
+    delComment: (id: number) => apiFetch<void>(`/api/feedback/comments/${id}`, { method: "DELETE", body: {} }),
   },
 
   feedbackAdmin: {

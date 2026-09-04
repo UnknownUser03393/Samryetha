@@ -387,6 +387,22 @@ feedback_items = Table(
     sqlite_autoincrement=True,
 )
 
+feedback_comments = Table(
+    "feedback_comments",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("item_id", ForeignKey("feedback_items.id"), nullable=False),
+    Column("author_id", ForeignKey("users.id"), nullable=False),
+    Column("parent_comment_id", ForeignKey("feedback_comments.id")),  # 自引用，嵌套评论
+    Column("body", Text, nullable=False),
+    *_soft_delete(),
+    _ms("created_at"),
+    _ms("updated_at"),
+    Index("feedback_comments_item_created_idx", "item_id", "created_at"),
+    Index("feedback_comments_parent_idx", "parent_comment_id"),
+    sqlite_autoincrement=True,
+)
+
 feedback_api_keys = Table(
     "feedback_api_keys",
     metadata,
@@ -436,6 +452,7 @@ __all__ = [
     "feedback_projects",
     "feedback_project_members",
     "feedback_items",
+    "feedback_comments",
     "feedback_api_keys",
     "app_settings",
 ]

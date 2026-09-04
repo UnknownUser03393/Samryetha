@@ -378,7 +378,7 @@ export function ThreadPage({ id, initialTitle }: { id: number; initialTitle?: st
     return <AppShell><div className="empty-state content-fade">This discussion could not be found.</div></AppShell>;
   }
 
-  const isStaff = user?.role === "moderator" || user?.role === "admin";
+  const isStaff = user?.role === "admin";
 
   return (
     <AppShell>

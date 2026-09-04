@@ -876,3 +876,14 @@ html body[data-scroll-locked] {
   .feedback-layout { padding: 24px 0 48px; }
   .feedback-field-row { grid-template-columns: 1fr; }
 }
+
+/* ---- feedback 评论（嵌套） ---- */
+/* ---- feedback comments (nested) ---- */
+.fb-comments { margin-top: 12px; padding: 12px 14px; border-top: 1px solid var(--line); background: color-mix(in srgb, var(--surface) 50%, transparent); border-radius: 10px; }
+.fb-comment { padding: 6px 0; }
+.fb-comment-head { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 12px; }
+.fb-comment-head b { color: var(--ink); }
+.fb-comment-body { margin-top: 4px; color: var(--ink); font-size: 13px; line-height: 1.6; white-space: pre-wrap; }
+.fb-comment-form { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
+.fb-comment-form textarea { width: 100%; min-height: 60px; padding: 9px 11px; border: 1px solid var(--line); border-radius: 9px; outline: 0; background: var(--bg); color: var(--ink); font-size: 13px; resize: vertical; }
+.fb-comment-form .primary-action { align-self: flex-end; }
