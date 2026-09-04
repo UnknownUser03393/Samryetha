@@ -55,16 +55,20 @@ if (!production) {
 app.use(async (request, response, next) => {
   try {
     const url = request.originalUrl;
+    const isTasks = new URL(url, "http://localhost").pathname === "/tasks";
     let template;
     let render;
+    let renderTasks;
 
     if (!production) {
-      template = await fs.readFile(path.resolve(root, "index.html"), "utf-8");
+      template = await fs.readFile(path.resolve(root, isTasks ? "tasks.html" : "index.html"), "utf-8");
       template = await vite.transformIndexHtml(url, template);
-      ({ render } = await vite.ssrLoadModule("/src/entry-server.tsx"));
+      ({ render, renderTasks } = await vite.ssrLoadModule("/src/entry-server.tsx"));
+      render = isTasks ? renderTasks : render;
     } else {
-      template = await fs.readFile(path.resolve(root, "dist/client/index.html"), "utf-8");
-      ({ render } = await import("./dist/server/entry-server.js"));
+      template = await fs.readFile(path.resolve(root, isTasks ? "dist/client/tasks.html" : "dist/client/index.html"), "utf-8");
+      ({ render, renderTasks } = await import("./dist/server/entry-server.js"));
+      render = isTasks ? renderTasks : render;
     }
 
     response

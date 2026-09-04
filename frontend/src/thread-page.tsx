@@ -5,7 +5,6 @@ import { api, type DiscussionDetail, type ReplyDTO, type BodyFormat } from "./li
 import { useAuth } from "./lib/auth";
 import { formatTime } from "./lib/format";
 import { AppShell } from "./app-shell";
-import { ThreadIcon } from "./icons";
 
 export function ThreadPage({ id, initialTitle }: { id: number; initialTitle?: string }) {
   const { user } = useAuth();
@@ -27,6 +26,17 @@ export function ThreadPage({ id, initialTitle }: { id: number; initialTitle?: st
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  useLayoutEffect(() => {
+    const textarea = replyInputRef.current;
+    if (!textarea) return;
+    textarea.style.height = "auto";
+    const maxHeight = 280;
+    const height = Math.max(128, Math.min(textarea.scrollHeight, maxHeight));
+    textarea.style.height = `${height}px`;
+    textarea.style.overflowY = textarea.scrollHeight > maxHeight ? "auto" : "hidden";
+  }, [replyText]);
+
   // ---- Save/Follow 的"单条时间线"动效 ----
   // 统一用 element.animate() 手动驱动（不用 CSS @keyframes / key remount），并存入 Animation
   // 引用：动画播放中被再次点击时，先 getComputedStyle 读当前实际渲染值作为新动画起点，
@@ -516,17 +526,22 @@ export function ThreadPage({ id, initialTitle }: { id: number; initialTitle?: st
                   </div>
                 )}
                 <label className="form-field body-field">
-                  <span className="sr-only">Reply</span>
+                  <div className="body-field-head">
+                    <span>Message</span>
+                    <div className="format-toggle reply-format-toggle" role="group" aria-label="Text format">
+                      <button type="button" className={`format-toggle-btn ${replyFormat === "markdown" ? "active" : ""}`} aria-pressed={replyFormat === "markdown"} onClick={() => setReplyFormat("markdown")}>Markdown</button>
+                      <button type="button" className={`format-toggle-btn ${replyFormat === "text" ? "active" : ""}`} aria-pressed={replyFormat === "text"} onClick={() => setReplyFormat("text")}>Plain text</button>
+                    </div>
+                  </div>
                   <textarea ref={replyInputRef} value={replyText} onChange={(e) => setReplyText(e.target.value)} rows={4} placeholder={replyingTo === null ? "Add to the discussion…" : "Write a reply…"} />
                 </label>
-                <div className="format-toggle reply-format-toggle" role="group" aria-label="Reply format">
-                  <button type="button" className={`format-toggle-btn ${replyFormat === "markdown" ? "active" : ""}`} aria-pressed={replyFormat === "markdown"} onClick={() => setReplyFormat("markdown")}>Markdown</button>
-                  <button type="button" className={`format-toggle-btn ${replyFormat === "text" ? "active" : ""}`} aria-pressed={replyFormat === "text"} onClick={() => setReplyFormat("text")}>Plain text</button>
-                </div>
-                <div className="submit-actions">
-                  <button className="primary-action" type="submit" disabled={busy || !replyText.trim()}>
-                    <ThreadIcon /> Reply
-                  </button>
+                <div className="editor-actions">
+                  <button className="attachment-action" type="button" onClick={() => flash("Attachments aren’t wired up yet — plain text works fine.")}>Add attachment</button>
+                  <div className="submit-actions">
+                    <button className="primary-action" type="submit" disabled={busy || !replyText.trim()}>
+                      Reply
+                    </button>
+                  </div>
                 </div>
               </form>
             )}
