@@ -1,7 +1,7 @@
 import { FormEvent, useEffect, useState } from "react";
 import { AppShell } from "./app-shell";
 import { SDropdown } from "./s-dropdown";
-import { api, ApiError, type BoardSummary } from "./lib/api";
+import { api, ApiError, type BoardSummary, type BodyFormat } from "./lib/api";
 import { useAuth } from "./lib/auth";
 
 export function PostPage({ onPublished }: { onPublished: (id: number) => void }) {
@@ -9,6 +9,7 @@ export function PostPage({ onPublished }: { onPublished: (id: number) => void })
   const [boards, setBoards] = useState<BoardSummary[]>([]);
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
+  const [format, setFormat] = useState<BodyFormat>("markdown");
   const [selectedBoard, setSelectedBoard] = useState<BoardSummary | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -40,6 +41,7 @@ export function PostPage({ onPublished }: { onPublished: (id: number) => void })
         boardSlug: selectedBoard.slug,
         title: title.trim(),
         bodyMarkdown: body.trim(),
+        bodyFormat: format,
       });
       onPublished(created.id);
     } catch (err) {
@@ -92,8 +94,14 @@ export function PostPage({ onPublished }: { onPublished: (id: number) => void })
               </div>
 
               <label className="form-field body-field">
-                <span>Message (markdown supported)</span>
-                <textarea value={body} onChange={(event) => setBody(event.target.value)} rows={11} maxLength={40000} placeholder="Add context, details, or a question…" />
+                <div className="body-field-head">
+                  <span>Message</span>
+                  <div className="format-toggle" role="group" aria-label="Text format">
+                    <button type="button" className={`format-toggle-btn ${format === "markdown" ? "active" : ""}`} aria-pressed={format === "markdown"} onClick={() => setFormat("markdown")}>Markdown</button>
+                    <button type="button" className={`format-toggle-btn ${format === "text" ? "active" : ""}`} aria-pressed={format === "text"} onClick={() => setFormat("text")}>Plain text</button>
+                  </div>
+                </div>
+                <textarea value={body} onChange={(event) => setBody(event.target.value)} rows={11} maxLength={40000} placeholder={format === "markdown" ? "Add context, details, or a question…" : "Write plain text…"} />
               </label>
 
               {error && <p className="form-error" role="alert">{error}</p>}

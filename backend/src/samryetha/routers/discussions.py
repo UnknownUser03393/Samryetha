@@ -22,6 +22,7 @@ class CreateDiscussionBody(BaseModel):
     boardSlug: Annotated[str, Field(min_length=1, max_length=50)]
     title: Annotated[str, Field(min_length=3, max_length=100)]
     bodyMarkdown: Annotated[str, Field(min_length=1, max_length=40000)]
+    bodyFormat: Literal["markdown", "text"] = "markdown"
     attachmentIds: list[int] | None = Field(default=None, max_length=10)
 
 
@@ -29,6 +30,7 @@ class UpdateDiscussionBody(BaseModel):
     model_config = ConfigDict(extra="ignore")
     title: Annotated[str, Field(min_length=3, max_length=100)] | None = None
     bodyMarkdown: Annotated[str, Field(min_length=1, max_length=40000)] | None = None
+    bodyFormat: Literal["markdown", "text"] | None = None
 
 
 class DeleteDiscussionBody(BaseModel):
@@ -39,12 +41,14 @@ class DeleteDiscussionBody(BaseModel):
 class CreateReplyBody(BaseModel):
     model_config = ConfigDict(extra="ignore")
     bodyMarkdown: Annotated[str, Field(min_length=1, max_length=5000)]
+    bodyFormat: Literal["markdown", "text"] = "markdown"
     parentReplyId: int | None = Field(default=None, ge=1)
 
 
 class UpdateReplyBody(BaseModel):
     model_config = ConfigDict(extra="ignore")
     bodyMarkdown: Annotated[str, Field(min_length=1, max_length=5000)]
+    bodyFormat: Literal["markdown", "text"] | None = None
 
 
 def _feed_opts(cursor: str | None, limit: int, feed: str | None = None, board: str | None = None) -> dict:
@@ -136,7 +140,7 @@ def update_reply(
     conn: DbConn,
     user: CurrentUser = Depends(require_active_user),
 ) -> dict:
-    return d.update_reply(conn, user, reply_id, body.bodyMarkdown)
+    return d.update_reply(conn, user, reply_id, body.bodyMarkdown, body.bodyFormat or "markdown")
 
 
 @router.delete("/api/replies/{reply_id}")

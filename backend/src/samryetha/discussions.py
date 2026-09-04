@@ -15,7 +15,7 @@ from .authz import Abilities, assert_can, can
 from .boards import get_board_for_authz
 from .db import now_ms
 from .errors import conflict, forbidden, internal_error, not_found, validation_failed
-from .markdown import render_markdown
+from .markdown import render_body
 from .outbox import emit_event
 from .schema import (
     attachments,
@@ -229,6 +229,7 @@ def load_detail(conn: Connection, viewer, d: dict) -> dict:
         "isLocked": d["is_locked"] == 1,
         "bodyMarkdown": d["body_md"],
         "bodyHtml": d["body_html"],
+        "bodyFormat": d.get("body_format") or "markdown",
         "isSaved": saved is not None,
         "isFollowing": following is not None,
         "createdAt": d["created_at"],
@@ -336,7 +337,8 @@ def create_discussion(conn: Connection, actor, data: dict) -> dict:
         raise not_found("Board not found")
     board_res = {"type": "board", **board}
     assert_can(actor, Abilities.DISCUSSION_CREATE, board_res, conn)
-    body_html = render_markdown(data["bodyMarkdown"])
+    body_format = data.get("bodyFormat") or "markdown"
+    body_html = render_body(data["bodyMarkdown"], body_format)
     _now = now_ms()
     res = conn.execute(
         discussions.insert().values(
@@ -345,6 +347,7 @@ def create_discussion(conn: Connection, actor, data: dict) -> dict:
             title=title,
             body_md=data["bodyMarkdown"],
             body_html=body_html,
+            body_format=body_format,
             created_at=_now,
             updated_at=_now,
         )
@@ -393,8 +396,10 @@ def update_discussion(conn: Connection, actor, discussion_id: int, patch: dict) 
             raise validation_failed([{"field": "title", "message": "Title must be at least 3 characters", "code": "too_small"}])
         values["title"] = title
     if "bodyMarkdown" in patch:
+        body_format = patch.get("bodyFormat") or "markdown"
         values["body_md"] = patch["bodyMarkdown"]
-        values["body_html"] = render_markdown(patch["bodyMarkdown"])
+        values["body_html"] = render_body(patch["bodyMarkdown"], body_format)
+        values["body_format"] = body_format
     conn.execute(update(discussions).where(discussions.c.id == discussion_id).values(**values))
     return get_discussion(conn, actor, discussion_id)
 
@@ -433,6 +438,7 @@ def _reply_dto(row: dict, author: dict, discussion_id: int | None = None, delete
         "author": to_author(author),
         "bodyMarkdown": "" if deleted else row["body_md"],
         "bodyHtml": None if deleted else row["body_html"],
+        "bodyFormat": row.get("body_format") or "markdown",
         "isDeleted": deleted or row["deleted_at"] is not None,
         "createdAt": row["created_at"],
         "updatedAt": row["updated_at"],
@@ -467,7 +473,8 @@ def create_reply(conn: Connection, actor, discussion_id: int, data: dict) -> dic
         ).first()
         if parent is None:
             raise not_found("Parent reply not found")
-    body_html = render_markdown(data["bodyMarkdown"])
+    body_format = data.get("bodyFormat") or "markdown"
+    body_html = render_body(data["bodyMarkdown"], body_format)
     _now = now_ms()
     ins = conn.execute(
         replies.insert().values(
@@ -476,6 +483,7 @@ def create_reply(conn: Connection, actor, discussion_id: int, data: dict) -> dic
             parent_reply_id=data.get("parentReplyId"),
             body_md=data["bodyMarkdown"],
             body_html=body_html,
+            body_format=body_format,
             created_at=_now,
             updated_at=_now,
         )
@@ -547,7 +555,7 @@ def list_replies(conn: Connection, viewer, discussion_id: int) -> dict:
     return {"items": items}
 
 
-def update_reply(conn: Connection, actor, reply_id: int, body_markdown: str) -> dict:
+def update_reply(conn: Connection, actor, reply_id: int, body_markdown: str, body_format: str = "markdown") -> dict:
     row = conn.execute(select(replies).where(replies.c.id == reply_id)).first()
     if row is None:
         raise not_found("Reply not found")
@@ -563,7 +571,7 @@ def update_reply(conn: Connection, actor, reply_id: int, body_markdown: str) -> 
     conn.execute(
         update(replies)
         .where(replies.c.id == reply_id)
-        .values(body_md=body_markdown, body_html=render_markdown(body_markdown), updated_at=_now)
+        .values(body_md=body_markdown, body_html=render_body(body_markdown, body_format), body_format=body_format, updated_at=_now)
     )
     updated = dict(conn.execute(select(replies).where(replies.c.id == reply_id)).first()._mapping)
     author = dict(conn.execute(select(users).where(users.c.id == updated["author_id"])).first()._mapping)
@@ -813,6 +821,7 @@ def list_replies_by_author(conn: Connection, viewer, author_id: int, opts: dict)
         replies.c.parent_reply_id,
         replies.c.body_md,
         replies.c.body_html,
+        replies.c.body_format,
         replies.c.created_at,
         replies.c.updated_at,
         replies.c.author_id,
@@ -840,6 +849,7 @@ def list_replies_by_author(conn: Connection, viewer, author_id: int, opts: dict)
             "parent_reply_id": r.parent_reply_id,
             "body_md": r.body_md,
             "body_html": r.body_html,
+            "body_format": r.body_format,
             "created_at": r.created_at,
             "updated_at": r.updated_at,
             "author_id": r.author_id,
