@@ -344,6 +344,10 @@ def main() -> None:
     app = create_app(settings)
     from .outbox_worker import OutboxWorker
 
+    # 全新库建表：create_all 幂等，只创建缺失的表，既有库不受影响
+    # Create tables for a fresh database: create_all is idempotent and skips existing tables
+    app.state.db.create_schema()
+
     # 启动时幂等确保内建 admin/dev（镜像 TS main 的 ensureBuiltInAccounts）
     from .auth import ensure_builtin_accounts, merge_moderator_roles
 

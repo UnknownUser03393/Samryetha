@@ -454,6 +454,19 @@ def create_reply(conn: Connection, actor, discussion_id: int, data: dict) -> dic
         "deletedAt": d["deleted_at"],
     }
     assert_can(actor, Abilities.REPLY_CREATE, res, conn)
+    # 校验父评论：parentReplyId 必须属于同一 discussion 且未被软删，否则产生跨帖孤儿回复，父不存在时外键触发 500
+    # Validate parent reply: it must belong to the same discussion and not be soft-deleted, otherwise orphan replies / FK 500
+    parent_reply_id = data.get("parentReplyId")
+    if parent_reply_id is not None:
+        parent = conn.execute(
+            select(replies.c.id).where(
+                (replies.c.id == parent_reply_id)
+                & (replies.c.discussion_id == discussion_id)
+                & (replies.c.deleted_at.is_(None))
+            )
+        ).first()
+        if parent is None:
+            raise not_found("Parent reply not found")
     body_html = render_markdown(data["bodyMarkdown"])
     _now = now_ms()
     ins = conn.execute(

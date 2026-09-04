@@ -104,7 +104,15 @@ export function SettingsPage() {
     setSaveState("saving");
     setSaveMessage(null);
     try {
-      await api.users.updateProfile({ displayName: displayName.trim(), username: username.trim(), recoveryEmail: recoveryEmail.trim(), bio: bio.trim() });
+      // 未填 recovery email 时省略该字段：后端 min_length=3 会拒绝空串 ""，否则未设邮箱的用户保存任何资料都 422
+      // Omit recoveryEmail when empty: backend rejects "" via min_length=3, otherwise users without it get 422 on every save
+      const patch: { displayName: string; username: string; bio: string; recoveryEmail?: string } = {
+        displayName: displayName.trim(),
+        username: username.trim(),
+        bio: bio.trim(),
+      };
+      if (recoveryEmail.trim()) patch.recoveryEmail = recoveryEmail.trim();
+      await api.users.updateProfile(patch);
       await refresh();
       setSaveState("saved");
       setSaveMessage("Changes saved.");

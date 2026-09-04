@@ -8,7 +8,6 @@ import { LoginPage, type AuthMode } from "./login-page";
 import { ThreadPage } from "./thread-page";
 import { AdminPage } from "./admin-page";
 import { FeedbackPage } from "./feedback-page";
-import { TasksPage } from "./tasks-page";
 import { ForgotPasswordPage } from "./forgot-password-page";
 import { ResetPasswordPage } from "./reset-password-page";
 import { AuthProvider } from "./lib/auth";
