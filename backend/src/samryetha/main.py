@@ -309,6 +309,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     from .routers.attachments import router as attachments_router
     from .routers.search import router as search_router
     from .routers.notifications import router as notifications_router
+    from .routers.messages import router as messages_router
     from .routers.presence import router as presence_router
     from .routers.realtime import router as realtime_router
     from .routers.moderation import router as moderation_router
@@ -323,6 +324,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(attachments_router)
     app.include_router(search_router)
     app.include_router(notifications_router)
+    app.include_router(messages_router)
     app.include_router(presence_router)
     app.include_router(realtime_router)
     app.include_router(moderation_router)

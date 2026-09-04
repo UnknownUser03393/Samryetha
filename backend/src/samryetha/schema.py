@@ -431,6 +431,37 @@ app_settings = Table(
 )
 
 
+# ---------------------------------------------------------------- direct messages
+
+conversations = Table(
+    "conversations",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("user_a_id", ForeignKey("users.id"), nullable=False),
+    Column("user_b_id", ForeignKey("users.id"), nullable=False),
+    _ms("last_message_at"),
+    _ms("created_at"),
+    UniqueConstraint("user_a_id", "user_b_id", name="conversations_pair_unique"),
+    Index("conversations_user_a_idx", "user_a_id"),
+    Index("conversations_user_b_idx", "user_b_id"),
+    sqlite_autoincrement=True,
+)
+
+direct_messages = Table(
+    "direct_messages",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("conversation_id", ForeignKey("conversations.id"), nullable=False),
+    Column("sender_id", ForeignKey("users.id"), nullable=False),
+    Column("body", Text, nullable=False),
+    Column("source", Text, nullable=False, server_default="user"),  # 预留：其他平台接入
+    _ms("read_at"),
+    _ms("created_at"),
+    Index("direct_messages_conversation_idx", "conversation_id", "created_at"),
+    sqlite_autoincrement=True,
+)
+
+
 __all__ = [
     "metadata",
     "users",
@@ -443,6 +474,8 @@ __all__ = [
     "discussion_follows",
     "user_follows",
     "notifications",
+    "conversations",
+    "direct_messages",
     "attachments",
     "reports",
     "moderation_actions",

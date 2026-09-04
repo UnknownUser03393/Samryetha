@@ -11,6 +11,7 @@ import { FeedbackPage } from "./feedback-page";
 import { ForgotPasswordPage } from "./forgot-password-page";
 import { ResetPasswordPage } from "./reset-password-page";
 import { AuthProvider } from "./lib/auth";
+import { InboxPage } from "./inbox-page";
 
 type TransitionDocument = Document & {
   startViewTransition?: (update: () => void) => { finished: Promise<void> };
@@ -107,7 +108,7 @@ function RootAppInner({ pathname }: { pathname: string }) {
       // （移动端汉堡菜单在首页切 Latest/Followed/Boards 就是这个场景）。
       if (destination.pathname === activePath && !nextView) return;
       const isDetail = DETAIL_PATTERN.test(destination.pathname);
-      const isApp = destination.pathname === "/" || destination.pathname === "/post" || destination.pathname === "/profile" || destination.pathname === "/settings" || destination.pathname === "/admin" || destination.pathname === "/feedback";
+      const isApp = destination.pathname === "/" || destination.pathname === "/post" || destination.pathname === "/profile" || destination.pathname === "/settings" || destination.pathname === "/admin" || destination.pathname === "/feedback" || destination.pathname === "/inbox";
       if (!isDetail && !isApp && !["/login", "/register", "/forgot-password", "/reset-password"].includes(destination.pathname)) return;
       event.preventDefault();
       // 保留 search（如 /?board=study），供 DiscussionApp 挂载时读板块初始化筛选。
@@ -179,6 +180,7 @@ function RootAppInner({ pathname }: { pathname: string }) {
   if (activePath === "/settings") return <SettingsPage />;
   if (activePath === "/admin") return <><AdminPage onNotify={showToast} /><Notifications items={notifications} /></>;
   if (activePath === "/feedback") return <FeedbackPage />;
+  if (activePath === "/inbox") return <InboxPage />;
   return (
     <>
       <DiscussionApp initialView={discussionView} onViewChange={setDiscussionView} />
