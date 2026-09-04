@@ -403,6 +403,27 @@ feedback_api_keys = Table(
     sqlite_autoincrement=True,
 )
 
+# ---------------------------------------------------------------- tasks
+
+# 开发任务追踪（独立于 feedback）：公开可读、登录可写，分组(category)+优先级(priority)。
+tasks = Table(
+    "tasks",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("author_id", ForeignKey("users.id"), nullable=False),
+    Column("category", Text, nullable=False, server_default="General"),
+    Column("title", Text, nullable=False),
+    Column("notes", Text, nullable=False, server_default=""),
+    Column("priority", Text, nullable=False, server_default="normal"),  # urgent|normal
+    Column("status", Text, nullable=False, server_default="open"),  # open|done
+    _ms("done_at"),
+    _ms("created_at"),
+    _ms("updated_at"),
+    Index("tasks_status_created_idx", "status", "created_at"),
+    Index("tasks_author_idx", "author_id"),
+    sqlite_autoincrement=True,
+)
+
 # ---------------------------------------------------------------- app settings
 
 app_settings = Table(
@@ -437,5 +458,6 @@ __all__ = [
     "feedback_project_members",
     "feedback_items",
     "feedback_api_keys",
+    "tasks",
     "app_settings",
 ]

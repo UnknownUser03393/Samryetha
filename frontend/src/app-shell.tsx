@@ -3,7 +3,7 @@ import { UserMenu } from "./user-menu";
 import { MobileMenu } from "./mobile-menu";
 import { SearchIcon } from "./icons";
 
-export type ShellLocation = "post" | "profile" | "settings" | "feedback";
+export type ShellLocation = "post" | "profile" | "settings" | "feedback" | "tasks";
 export type ShellView = "latest" | "followed" | "boards";
 
 // 统一外壳：topbar（wordmark + 导航 + 搜索 + 汉堡菜单 + UserMenu + Post）。
@@ -36,6 +36,7 @@ export function AppShell({
               <a className="nav-link" href="/" data-view="followed">Followed</a>
               <a className="nav-link" href="/" data-view="boards">Boards</a>
               <a className="nav-link" href="/feedback">Feedback</a>
+              <a className="nav-link" href="/tasks">Tasks</a>
             </nav>
           )}
           <div className="actions">

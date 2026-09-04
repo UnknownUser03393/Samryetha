@@ -121,11 +121,15 @@ export function ProfilePage() {
                   {bio && <p className="profile-bio">{bio}</p>}
                 </div>
                 {isSelf ? (
-                  <a className="edit-profile" href="/settings">Edit profile</a>
+                  <div className="profile-actions">
+                    <a className="edit-profile" href="/settings">Edit profile</a>
+                  </div>
                 ) : user ? (
-                  <button className={`edit-profile ${profile?.isFollowing ? "following" : ""}`} type="button" onClick={followUser}>
-                    {profile?.isFollowing ? "Following" : "Follow"}
-                  </button>
+                  <div className="profile-actions">
+                    <button className={`edit-profile ${profile?.isFollowing ? "following" : ""}`} type="button" onClick={followUser}>
+                      {profile?.isFollowing ? "Following" : "Follow"}
+                    </button>
+                  </div>
                 ) : null}
               </div>
 

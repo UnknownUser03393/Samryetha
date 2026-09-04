@@ -244,6 +244,26 @@ export type FeedbackApiKey = {
 export type FeedbackBackupInfo = { name: string; size: number; createdAt: number };
 export type FeedbackBackupSettings = { backupCron: string; backupKeep: number };
 
+export type TaskPriority = "urgent" | "normal";
+export type TaskStatus = "open" | "done";
+
+export type TaskItem = {
+  id: number;
+  author: AuthorRef;
+  category: string;
+  title: string;
+  notes: string;
+  priority: TaskPriority;
+  status: TaskStatus;
+  doneAt: number | null;
+  createdAt: number;
+  updatedAt: number;
+};
+
+export type TaskCategoryCount = { category: string; open: number; done: number };
+
+export type TaskList = { items: TaskItem[]; categories: TaskCategoryCount[]; canWrite: boolean };
+
 export type ApiErrorPayload = { code: string; message: string; requestId?: string; details?: unknown };
 
 export class ApiError extends Error {
@@ -437,5 +457,16 @@ export const api = {
       apiFetch<{ ok: boolean; restartRequired: boolean }>("/api/admin/feedback/backups/restore", { method: "POST", body: { name } }),
     saveBackupSettings: (body: FeedbackBackupSettings) =>
       apiFetch<void>("/api/admin/feedback/backups/settings", { method: "PUT", body }),
+  },
+
+  tasks: {
+    list: () => apiFetch<TaskList>("/api/tasks"),
+    create: (body: { category?: string; title: string; notes?: string; priority?: TaskPriority; status?: TaskStatus }) =>
+      apiFetch<TaskItem>("/api/tasks", { method: "POST", body }),
+    update: (id: number, body: { category?: string; title?: string; notes?: string; priority?: TaskPriority }) =>
+      apiFetch<TaskItem>(`/api/tasks/${id}`, { method: "PATCH", body }),
+    del: (id: number) => apiFetch<void>(`/api/tasks/${id}`, { method: "DELETE", body: {} }),
+    setStatus: (id: number, status: TaskStatus) =>
+      apiFetch<TaskItem>(`/api/tasks/${id}/status`, { method: "POST", body: { status } }),
   },
 };
