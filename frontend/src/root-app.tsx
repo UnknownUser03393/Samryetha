@@ -78,12 +78,14 @@ function RootAppInner({ pathname }: { pathname: string }) {
       sharedTitle?: { id: number; title: string } | null,
     ) => {
       const update = () => {
+        // 先更新 URL 再切状态：否则新页面组件在 flushSync 同步渲染时读到的仍是旧的 window.location.search
+        // Push the URL first, then switch state: otherwise the newly-mounted page reads the stale location.search during the synchronous flushSync render
+        if (nextUrl) window.history.pushState({}, "", nextUrl);
         flushSync(() => {
           if (nextView) setDiscussionView(nextView);
           setTransitionTitle(sharedTitle ?? null);
           setActivePath(nextPath);
         });
-        if (nextUrl) window.history.pushState({}, "", nextUrl);
         window.scrollTo({ top: 0 });
       };
 
