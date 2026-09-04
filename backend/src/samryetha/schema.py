@@ -124,6 +124,7 @@ discussions = Table(
     Column("title", Text, nullable=False),
     Column("body_md", Text, nullable=False),
     Column("body_html", Text),
+    Column("body_format", Text, nullable=False, server_default="markdown"),  # markdown|text
     Column("reply_count", Integer, nullable=False, server_default="0"),
     Column("save_count", Integer, nullable=False, server_default="0"),
     Column("is_pinned", Integer, nullable=False, server_default="0"),
@@ -151,6 +152,7 @@ replies = Table(
     Column("parent_reply_id", ForeignKey("replies.id")),  # 自引用，表级声明
     Column("body_md", Text, nullable=False),
     Column("body_html", Text),
+    Column("body_format", Text, nullable=False, server_default="markdown"),  # markdown|text
     *_soft_delete(),
     _ms("created_at"),
     _ms("updated_at"),

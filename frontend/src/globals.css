@@ -263,6 +263,15 @@ input:-webkit-autofill:active {
 .post-title-row { display: grid; grid-template-columns: minmax(0, 1fr) 220px; gap: 14px; align-items: end; }
 .form-field { position: relative; display: flex; flex-direction: column; gap: 9px; }
 .form-field > span { color: var(--muted); font-size: 12px; font-weight: 620; }
+/* Markdown/普通文本 格式切换开关 */
+/* Markdown / plain-text format toggle */
+.body-field-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.body-field-head > span { color: var(--muted); font-size: 12px; font-weight: 620; }
+.format-toggle { display: inline-flex; gap: 4px; padding: 3px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface-2); }
+.format-toggle-btn { border: 0; border-radius: 999px; padding: 5px 12px; background: transparent; color: var(--muted); font-size: 12px; font-weight: 590; cursor: pointer; transition: background .14s ease, color .14s ease; }
+.format-toggle-btn:hover { color: var(--ink); }
+.format-toggle-btn.active { background: var(--ink); color: var(--bg); }
+.reply-format-toggle { margin: -4px 0 10px; }
 .form-field input, .form-field textarea { width: 100%; border: 1px solid var(--line); outline: none; border-radius: 11px; background: color-mix(in srgb, var(--surface) 76%, transparent); color: var(--ink); transition: border-color .14s ease, background .14s ease, box-shadow .14s ease; }
 .form-field input:focus, .form-field textarea:focus { border-color: color-mix(in srgb, var(--accent) 62%, var(--line)); background: var(--surface); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 8%, transparent); }
 .form-field input { height: 44px; padding: 0 52px 0 14px; font-size: 15px; }
@@ -528,6 +537,31 @@ input:-webkit-autofill:active {
 .thread-detail-body pre { background: var(--surface-2); padding: 14px; border-radius: 10px; overflow-x: auto; font-size: 13px; }
 .thread-detail-body blockquote { margin: 0; padding-left: 14px; border-left: 3px solid var(--line); color: var(--muted); }
 .thread-detail-body a { color: var(--accent); }
+/* 恢复 markdown 块级元素的垂直间距：Tailwind preflight 清零了 p/ul/ol/blockquote/pre/hr/标题 的 margin，导致空行（段落）被吞 */
+/* Restore markdown block spacing: Tailwind preflight zeroes p/ul/ol/blockquote/pre/hr/heading margins, swallowing blank lines */
+.thread-detail-body > p,
+.thread-detail-body > ul,
+.thread-detail-body > ol,
+.thread-detail-body > blockquote,
+.thread-detail-body > pre,
+.thread-detail-body > hr,
+.thread-detail-body > h1,
+.thread-detail-body > h2,
+.thread-detail-body > h3,
+.thread-detail-body > h4,
+.thread-detail-body > h5,
+.thread-detail-body > h6,
+.reply-body > p,
+.reply-body > ul,
+.reply-body > ol,
+.reply-body > blockquote,
+.reply-body > pre {
+  margin: 0 0 1em;
+}
+.thread-detail-body > :last-child,
+.reply-body > :last-child {
+  margin-bottom: 0;
+}
 .thread-actions { display: flex; flex-wrap: wrap; gap: 9px; margin-top: 24px; padding-top: 18px; border-top: 1px solid var(--line); }
 /* Save/Follow 这类 toggle 走"单条时间线"：颜色过渡 + 文字 blur + 按钮 spring + 兄弟 FLIP
    共用同一个 duration 和缓动（280ms / cubic-bezier(.22,.8,.24,1)），在状态翻转那一个 commit 一起开火。

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type FormEvent, type ReactNode } from "react";
 import * as AlertDialog from "@radix-ui/react-alert-dialog";
 import { Loading } from "./loading";
-import { api, type DiscussionDetail, type ReplyDTO } from "./lib/api";
+import { api, type DiscussionDetail, type ReplyDTO, type BodyFormat } from "./lib/api";
 import { useAuth } from "./lib/auth";
 import { formatTime } from "./lib/format";
 import { AppShell } from "./app-shell";
@@ -17,7 +17,9 @@ export function ThreadPage({ id, initialTitle }: { id: number; initialTitle?: st
   const [editing, setEditing] = useState(false);
   const [editTitle, setEditTitle] = useState("");
   const [editBody, setEditBody] = useState("");
+  const [editFormat, setEditFormat] = useState<BodyFormat>("markdown");
   const [replyText, setReplyText] = useState("");
+  const [replyFormat, setReplyFormat] = useState<BodyFormat>("markdown");
   const [replyingTo, setReplyingTo] = useState<number | null>(null);
   const replyInputRef = useRef<HTMLTextAreaElement>(null);
   const [busy, setBusy] = useState(false);
@@ -164,6 +166,7 @@ export function ThreadPage({ id, initialTitle }: { id: number; initialTitle?: st
       setReplies(r.items);
       setEditTitle(d.title);
       setEditBody(d.bodyMarkdown);
+      setEditFormat(d.bodyFormat);
     } catch {
       setNotFound(true);
     } finally {
@@ -245,7 +248,7 @@ export function ThreadPage({ id, initialTitle }: { id: number; initialTitle?: st
     if (!detail || busy) return;
     setBusy(true);
     try {
-      await api.discussions.update(detail.id, { title: editTitle, bodyMarkdown: editBody });
+      await api.discussions.update(detail.id, { title: editTitle, bodyMarkdown: editBody, bodyFormat: editFormat });
       setEditing(false);
       await load();
       flash("Discussion updated");
@@ -275,6 +278,7 @@ export function ThreadPage({ id, initialTitle }: { id: number; initialTitle?: st
     try {
       await api.discussions.createReply(detail.id, {
         bodyMarkdown: replyText.trim(),
+        bodyFormat: replyFormat,
         parentReplyId: replyingTo,
       });
       setReplyText("");
@@ -397,7 +401,13 @@ export function ThreadPage({ id, initialTitle }: { id: number; initialTitle?: st
                 <input value={editTitle} onChange={(e) => setEditTitle(e.target.value)} maxLength={100} autoFocus />
               </label>
               <label className="form-field body-field">
-                <span>Message (markdown)</span>
+                <div className="body-field-head">
+                  <span>Message</span>
+                  <div className="format-toggle" role="group" aria-label="Text format">
+                    <button type="button" className={`format-toggle-btn ${editFormat === "markdown" ? "active" : ""}`} aria-pressed={editFormat === "markdown"} onClick={() => setEditFormat("markdown")}>Markdown</button>
+                    <button type="button" className={`format-toggle-btn ${editFormat === "text" ? "active" : ""}`} aria-pressed={editFormat === "text"} onClick={() => setEditFormat("text")}>Plain text</button>
+                  </div>
+                </div>
                 <textarea value={editBody} onChange={(e) => setEditBody(e.target.value)} rows={10} />
               </label>
               <div className="submit-actions">
@@ -445,7 +455,7 @@ export function ThreadPage({ id, initialTitle }: { id: number; initialTitle?: st
               </>
             )}
             {detail.can.update && !editing && (
-              <button type="button" className="action-btn" onClick={() => { setEditTitle(detail.title); setEditBody(detail.bodyMarkdown); setEditing(true); }}>Edit</button>
+              <button type="button" className="action-btn" onClick={() => { setEditTitle(detail.title); setEditBody(detail.bodyMarkdown); setEditFormat(detail.bodyFormat); setEditing(true); }}>Edit</button>
             )}
             {detail.can.delete && (
               <AlertDialog.Root
@@ -509,6 +519,10 @@ export function ThreadPage({ id, initialTitle }: { id: number; initialTitle?: st
                   <span className="sr-only">Reply</span>
                   <textarea ref={replyInputRef} value={replyText} onChange={(e) => setReplyText(e.target.value)} rows={4} placeholder={replyingTo === null ? "Add to the discussion…" : "Write a reply…"} />
                 </label>
+                <div className="format-toggle reply-format-toggle" role="group" aria-label="Reply format">
+                  <button type="button" className={`format-toggle-btn ${replyFormat === "markdown" ? "active" : ""}`} aria-pressed={replyFormat === "markdown"} onClick={() => setReplyFormat("markdown")}>Markdown</button>
+                  <button type="button" className={`format-toggle-btn ${replyFormat === "text" ? "active" : ""}`} aria-pressed={replyFormat === "text"} onClick={() => setReplyFormat("text")}>Plain text</button>
+                </div>
                 <div className="submit-actions">
                   <button className="primary-action" type="submit" disabled={busy || !replyText.trim()}>
                     <ThreadIcon /> Reply
