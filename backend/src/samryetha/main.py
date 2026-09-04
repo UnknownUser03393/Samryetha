@@ -347,6 +347,8 @@ def main() -> None:
     # 全新库建表：create_all 幂等，只创建缺失的表，既有库不受影响
     # Create tables for a fresh database: create_all is idempotent and skips existing tables
     app.state.db.create_schema()
+    # 既有库补列：create_all 只建表，不改已存在表；这里幂等补齐 schema.py 新声明但库里缺的列
+    app.state.db.ensure_schema_drift()
 
     # 启动时幂等确保内建 admin/dev（镜像 TS main 的 ensureBuiltInAccounts）
     from .auth import ensure_builtin_accounts, merge_moderator_roles
