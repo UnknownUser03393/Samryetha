@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type FormEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import * as AlertDialog from "@radix-ui/react-alert-dialog";
 import { Loading } from "./loading";
 import { api, type DiscussionDetail, type ReplyDTO, type BodyFormat } from "./lib/api";
@@ -314,7 +314,7 @@ export function ThreadPage({ id, initialTitle }: { id: number; initialTitle?: st
   const renderReplies = (parentReplyId: number | null, depth = 0): ReactNode => (
     <>
       {(repliesByParent.get(parentReplyId) ?? []).map((reply) => (
-        <div className="reply-branch" key={reply.id} style={{ "--reply-depth": depth } as CSSProperties}>
+        <div className="reply-branch" key={reply.id}>
           <div className={`reply ${depth > 0 ? "is-thread" : ""}`}>
             <div className="reply-head">
               <a className="sender" href={`/profile?username=${encodeURIComponent(reply.author.username)}`}>{reply.author.displayName}</a>
