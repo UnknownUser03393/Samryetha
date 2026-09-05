@@ -1,11 +1,13 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type FormEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type CSSProperties, type FormEvent, type ReactNode } from "react";
 import * as AlertDialog from "@radix-ui/react-alert-dialog";
 import { Loading } from "./loading";
 import { api, type DiscussionDetail, type ReplyDTO, type BodyFormat } from "./lib/api";
 import { useAuth } from "./lib/auth";
 import { formatTime } from "./lib/format";
+import { useIsomorphicLayoutEffect } from "./lib/use-isomorphic-layout-effect";
 import { AppShell } from "./app-shell";
-import { ThreadIcon } from "./icons";
+
+const MAX_REPLY_DEPTH = 8;
 
 export function ThreadPage({ id, initialTitle }: { id: number; initialTitle?: string }) {
   const { user } = useAuth();
@@ -27,6 +29,18 @@ export function ThreadPage({ id, initialTitle }: { id: number; initialTitle?: st
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const isStaff = user?.role === "admin";
+
+  useIsomorphicLayoutEffect(() => {
+    const textarea = replyInputRef.current;
+    if (!textarea) return;
+    textarea.style.height = "auto";
+    const maxHeight = 280;
+    const height = Math.max(128, Math.min(textarea.scrollHeight, maxHeight));
+    textarea.style.height = `${height}px`;
+    textarea.style.overflowY = textarea.scrollHeight > maxHeight ? "auto" : "hidden";
+  }, [replyText]);
+
   // ---- Save/Follow 的"单条时间线"动效 ----
   // 统一用 element.animate() 手动驱动（不用 CSS @keyframes / key remount），并存入 Animation
   // 引用：动画播放中被再次点击时，先 getComputedStyle 读当前实际渲染值作为新动画起点，
@@ -81,7 +95,7 @@ export function ThreadPage({ id, initialTitle }: { id: number; initialTitle?: st
   // 状态翻转后的动效：渲染提交后跑，此刻 getComputedStyle 若读到在播动画就是中间态 → 可接管
   const prevSaved = useRef<boolean | null>(null);
   const prevFollowing = useRef<boolean | null>(null);
-  useLayoutEffect(() => {
+  useIsomorphicLayoutEffect(() => {
     if (!detail) return;
     if (prevSaved.current === null) {
       // 首次拿到数据：只记录基线，不播放入场动画
@@ -89,7 +103,11 @@ export function ThreadPage({ id, initialTitle }: { id: number; initialTitle?: st
       prevFollowing.current = detail.isFollowing;
       return;
     }
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      prevSaved.current = detail.isSaved;
+      prevFollowing.current = detail.isFollowing;
+      return;
+    }
     if (prevSaved.current !== detail.isSaved) {
       prevSaved.current = detail.isSaved;
       if (saveBtnRef.current) {
@@ -121,7 +139,7 @@ export function ThreadPage({ id, initialTitle }: { id: number; initialTitle?: st
   });
 
   // FLIP：宽度变化后，兄弟按钮从旧位滑到新位（弹簧过冲 + 距触发越远延迟越长 + 先回缩再弹）
-  useLayoutEffect(() => {
+  useIsomorphicLayoutEffect(() => {
     if (!flipStart.current) return;
     const start = flipStart.current;
     flipStart.current = null;
@@ -181,30 +199,39 @@ export function ThreadPage({ id, initialTitle }: { id: number; initialTitle?: st
   // 从通知跳转过来时标记该通知已读
   useEffect(() => {
     const notif = new URLSearchParams(window.location.search).get("notif");
-    if (notif) void api.notifications.markRead(Number(notif));
+    if (!notif) return;
+    const notifId = Number(notif);
+    if (!Number.isFinite(notifId)) return;
+    void api.notifications.markRead(notifId).catch(() => undefined);
   }, []);
 
+  const flashTimer = useRef<number | null>(null);
   const flash = (message: string) => {
     setNotice(message);
-    window.setTimeout(() => setNotice(null), 2200);
+    if (flashTimer.current !== null) window.clearTimeout(flashTimer.current);
+    flashTimer.current = window.setTimeout(() => setNotice(null), 2200);
   };
+  useEffect(() => () => {
+    if (flashTimer.current !== null) window.clearTimeout(flashTimer.current);
+  }, []);
 
   // 乐观更新：点击立即翻转，不等网络；失败只有"最新一次"点击能弹回，旧请求不覆盖新状态。
   // 按钮全程可点——动效可打断（runInterruptible 从当前状态接管），API 用 token 防竞态回滚。
   const toggleSave = () => {
     if (!detail) return;
     const wasSaved = detail.isSaved;
+    const wasCount = detail.saveCount;
     const token = ++toggleToken.current;
     flipOrigin.current = saveBtnRef.current;
     cancelRunning();
     captureLayout();
-    setDetail((d) => d && { ...d, isSaved: !d.isSaved, saveCount: d.saveCount + (d.isSaved ? -1 : 1) });
+    setDetail((d) => d && { ...d, isSaved: !wasSaved, saveCount: wasCount + (wasSaved ? -1 : 1) });
     void (async () => {
       try {
         await (wasSaved ? api.discussions.unsave(detail.id) : api.discussions.save(detail.id));
       } catch {
         if (token === toggleToken.current) {
-          setDetail((d) => d && { ...d, isSaved: !d.isSaved, saveCount: d.saveCount + (d.isSaved ? -1 : 1) });
+          setDetail((d) => d && { ...d, isSaved: wasSaved, saveCount: wasCount });
         }
       }
     })();
@@ -217,13 +244,13 @@ export function ThreadPage({ id, initialTitle }: { id: number; initialTitle?: st
     flipOrigin.current = followBtnRef.current;
     cancelRunning();
     captureLayout();
-    setDetail((d) => d && { ...d, isFollowing: !d.isFollowing });
+    setDetail((d) => d && { ...d, isFollowing: !wasFollowing });
     void (async () => {
       try {
         await (wasFollowing ? api.discussions.unfollow(detail.id) : api.discussions.follow(detail.id));
       } catch {
         if (token === toggleToken.current) {
-          setDetail((d) => d && { ...d, isFollowing: !d.isFollowing });
+          setDetail((d) => d && { ...d, isFollowing: wasFollowing });
         }
       }
     })();
@@ -231,16 +258,24 @@ export function ThreadPage({ id, initialTitle }: { id: number; initialTitle?: st
 
   const togglePin = async () => {
     if (!detail) return;
-    await api.discussions.pin(detail.id);
-    await load();
-    flash(detail.isPinned ? "Unpinned" : "Pinned");
+    try {
+      await api.discussions.pin(detail.id);
+      await load();
+      flash(detail.isPinned ? "Unpinned" : "Pinned");
+    } catch {
+      flash("Could not update pin state. Please try again.");
+    }
   };
 
   const toggleLock = async () => {
     if (!detail) return;
-    await api.discussions.lock(detail.id);
-    await load();
-    flash(detail.isLocked ? "Unlocked" : "Locked");
+    try {
+      await api.discussions.lock(detail.id);
+      await load();
+      flash(detail.isLocked ? "Unlocked" : "Locked");
+    } catch {
+      flash("Could not update lock state. Please try again.");
+    }
   };
 
   const submitEdit = async (event: FormEvent<HTMLFormElement>) => {
@@ -252,6 +287,8 @@ export function ThreadPage({ id, initialTitle }: { id: number; initialTitle?: st
       setEditing(false);
       await load();
       flash("Discussion updated");
+    } catch {
+      flash("Could not save changes. Please try again.");
     } finally {
       setBusy(false);
     }
@@ -285,6 +322,8 @@ export function ThreadPage({ id, initialTitle }: { id: number; initialTitle?: st
       setReplyingTo(null);
       await load();
       flash("Reply posted");
+    } catch {
+      flash("Could not post this reply. Please try again.");
     } finally {
       setBusy(false);
     }
@@ -304,10 +343,12 @@ export function ThreadPage({ id, initialTitle }: { id: number; initialTitle?: st
     replyInputRef.current?.focus();
   };
 
+  const replyIds = new Set(replies.map((reply) => reply.id));
   const repliesByParent = replies.reduce<Map<number | null, ReplyDTO[]>>((groups, reply) => {
-    const group = groups.get(reply.parentReplyId) ?? [];
+    const parentId = reply.parentReplyId !== null && !replyIds.has(reply.parentReplyId) ? null : reply.parentReplyId;
+    const group = groups.get(parentId) ?? [];
     group.push(reply);
-    groups.set(reply.parentReplyId, group);
+    groups.set(parentId, group);
     return groups;
   }, new Map());
 
@@ -357,7 +398,7 @@ export function ThreadPage({ id, initialTitle }: { id: number; initialTitle?: st
               <p className="reply-body plain">{reply.bodyMarkdown}</p>
             )}
           </div>
-          {renderReplies(reply.id, depth + 1)}
+          {renderReplies(reply.id, Math.min(depth + 1, MAX_REPLY_DEPTH))}
         </div>
       ))}
     </>
@@ -381,8 +422,6 @@ export function ThreadPage({ id, initialTitle }: { id: number; initialTitle?: st
   if (notFound || !detail) {
     return <AppShell><div className="empty-state content-fade">This discussion could not be found.</div></AppShell>;
   }
-
-  const isStaff = user?.role === "admin";
 
   return (
     <AppShell>
@@ -516,17 +555,22 @@ export function ThreadPage({ id, initialTitle }: { id: number; initialTitle?: st
                   </div>
                 )}
                 <label className="form-field body-field">
-                  <span className="sr-only">Reply</span>
+                  <div className="body-field-head">
+                    <span>Message</span>
+                    <div className="format-toggle reply-format-toggle" role="group" aria-label="Text format">
+                      <button type="button" className={`format-toggle-btn ${replyFormat === "markdown" ? "active" : ""}`} aria-pressed={replyFormat === "markdown"} onClick={() => setReplyFormat("markdown")}>Markdown</button>
+                      <button type="button" className={`format-toggle-btn ${replyFormat === "text" ? "active" : ""}`} aria-pressed={replyFormat === "text"} onClick={() => setReplyFormat("text")}>Plain text</button>
+                    </div>
+                  </div>
                   <textarea ref={replyInputRef} value={replyText} onChange={(e) => setReplyText(e.target.value)} rows={4} placeholder={replyingTo === null ? "Add to the discussion…" : "Write a reply…"} />
                 </label>
-                <div className="format-toggle reply-format-toggle" role="group" aria-label="Reply format">
-                  <button type="button" className={`format-toggle-btn ${replyFormat === "markdown" ? "active" : ""}`} aria-pressed={replyFormat === "markdown"} onClick={() => setReplyFormat("markdown")}>Markdown</button>
-                  <button type="button" className={`format-toggle-btn ${replyFormat === "text" ? "active" : ""}`} aria-pressed={replyFormat === "text"} onClick={() => setReplyFormat("text")}>Plain text</button>
-                </div>
-                <div className="submit-actions">
-                  <button className="primary-action" type="submit" disabled={busy || !replyText.trim()}>
-                    <ThreadIcon /> Reply
-                  </button>
+                <div className="editor-actions">
+                  <button className="attachment-action" type="button" onClick={() => flash("Attachments aren’t wired up yet — plain text works fine.")}>Add attachment</button>
+                  <div className="submit-actions">
+                    <button className="primary-action" type="submit" disabled={busy || !replyText.trim()}>
+                      Reply
+                    </button>
+                  </div>
                 </div>
               </form>
             )}
