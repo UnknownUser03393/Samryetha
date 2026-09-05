@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import { AppShell } from "./app-shell";
 import { SDropdown } from "./s-dropdown";
 import { api, ApiError, type BoardSummary, type BodyFormat } from "./lib/api";
@@ -16,13 +16,25 @@ export function PostPage({ onPublished }: { onPublished: (id: number) => void })
   const [hint, setHint] = useState<string | null>(null);
 
   useEffect(() => {
+    let alive = true;
     api.boards
       .list()
       .then((data) => {
+        if (!alive) return;
         setBoards(data.items);
         setSelectedBoard((current) => current ?? data.items[0] ?? null);
       })
-      .catch(() => undefined);
+      .catch(() => {
+        if (alive) setError("Could not load boards. Refresh to try again.");
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const mountedRef = useRef(true);
+  useEffect(() => () => {
+    mountedRef.current = false;
   }, []);
 
 
@@ -45,9 +57,9 @@ export function PostPage({ onPublished }: { onPublished: (id: number) => void })
       });
       onPublished(created.id);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not post. Try again.");
+      if (mountedRef.current) setError(err instanceof ApiError ? err.message : "Could not post. Try again.");
     } finally {
-      setSubmitting(false);
+      if (mountedRef.current) setSubmitting(false);
     }
   };
 
@@ -79,7 +91,7 @@ export function PostPage({ onPublished }: { onPublished: (id: number) => void })
                 <label className="form-field">
                   <span className="sr-only">Title</span>
                   <input value={title} onChange={(event) => setTitle(event.target.value)} maxLength={100} placeholder="What do you want to discuss?" autoFocus />
-                  <small>{title.trim().length > 0 && title.trim().length < 3 ? `Min 3 chars (${title.trim().length}/3)` : `${title.length}/100`}</small>
+                  <small>{title.trim().length < 3 ? `Min 3 chars (${title.trim().length}/3)` : `${title.length}/100`}</small>
                 </label>
 
                 <SDropdown
