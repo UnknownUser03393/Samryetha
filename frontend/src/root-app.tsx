@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { flushSync } from "react-dom";
 import { DiscussionApp, type View } from "./discussion-app";
 import { PostPage } from "./post-page";
@@ -41,11 +41,11 @@ function Notifications({ items }: { items: NotificationItem[] }) {
   </div>;
 }
 
-function runTransition(update: () => void, style?: TransitionStyle) {
+function runTransition(update: () => void, style?: TransitionStyle): Promise<void> | undefined {
   const transitionDocument = document as TransitionDocument;
   if (!transitionDocument.startViewTransition) {
     update();
-    return;
+    return undefined;
   }
 
   if (style) document.documentElement.dataset.transition = style;
@@ -57,6 +57,7 @@ function runTransition(update: () => void, style?: TransitionStyle) {
         delete document.documentElement.dataset.transition;
       });
   }
+  return transition.finished;
 }
 
 const DETAIL_PATTERN = /^\/d\/(\d+)$/;
@@ -64,6 +65,8 @@ const DETAIL_PATTERN = /^\/d\/(\d+)$/;
 function RootAppInner({ pathname }: { pathname: string }) {
   const [activePath, setActivePath] = useState(pathname);
   const [discussionView, setDiscussionView] = useState<View>("latest");
+  const discussionViewRef = useRef(discussionView);
+  discussionViewRef.current = discussionView;
   const [transitionTitle, setTransitionTitle] = useState<{ id: number; title: string } | null>(null);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const notificationId = useRef(0);
@@ -80,7 +83,8 @@ function RootAppInner({ pathname }: { pathname: string }) {
       const update = () => {
         // 先更新 URL 再切状态：否则新页面组件在 flushSync 同步渲染时读到的仍是旧的 window.location.search
         // Push the URL first, then switch state: otherwise the newly-mounted page reads the stale location.search during the synchronous flushSync render
-        if (nextUrl) window.history.pushState({}, "", nextUrl);
+        // history.state 带上视图，popstate 时恢复（?board= 在 URL 里，由 DiscussionApp 自己读）
+        if (nextUrl) window.history.pushState({ view: nextView ?? (nextPath === "/" ? discussionViewRef.current : null) }, "", nextUrl);
         flushSync(() => {
           if (nextView) setDiscussionView(nextView);
           setTransitionTitle(sharedTitle ?? null);
@@ -90,11 +94,15 @@ function RootAppInner({ pathname }: { pathname: string }) {
       };
 
       const authPaths = ["/login", "/register", "/forgot-password", "/reset-password"];
-      if (authPaths.includes(activePath) && authPaths.includes(nextPath)) update();
-      else runTransition(update, style);
+      if (authPaths.includes(activePath) && authPaths.includes(nextPath)) {
+        update();
+        return undefined;
+      }
+      return runTransition(update, style);
     };
 
     const navigate = (event: MouseEvent) => {
+      if (event.defaultPrevented) return;
       if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
       if (!(event.target instanceof Element)) return;
       const anchor = event.target.closest<HTMLAnchorElement>("a[href]");
@@ -124,10 +132,25 @@ function RootAppInner({ pathname }: { pathname: string }) {
         ? { id: detailId, title: sourceTitle.textContent }
         : null;
       if (sharedTitle) sourceTitle!.style.viewTransitionName = "thread-title";
-      changePage(destination.pathname, destination.pathname + destination.search, nextView, style, sharedTitle);
+      const finished = changePage(destination.pathname, destination.pathname + destination.search, nextView, style, sharedTitle);
+      if (sharedTitle && sourceTitle) {
+        const clearName = () => {
+          sourceTitle.style.viewTransitionName = "";
+        };
+        if (finished) void finished.then(clearName, clearName);
+        else clearName();
+      }
     };
 
-    const restoreHistory = () => changePage(window.location.pathname);
+    const restoreHistory = (event: PopStateEvent) => {
+      const state = event.state as { view?: unknown } | null;
+      const view = state?.view;
+      changePage(
+        window.location.pathname,
+        undefined,
+        view === "latest" || view === "followed" || view === "boards" ? view : undefined,
+      );
+    };
 
     document.addEventListener("click", navigate);
     window.addEventListener("popstate", restoreHistory);
@@ -153,7 +176,7 @@ function RootAppInner({ pathname }: { pathname: string }) {
   const signIn = () => {
     runTransition(() => {
       flushSync(() => setActivePath("/"));
-      window.history.pushState({}, "", "/");
+      window.history.pushState({ view: discussionViewRef.current }, "", "/");
       window.scrollTo({ top: 0 });
     });
   };
@@ -161,30 +184,34 @@ function RootAppInner({ pathname }: { pathname: string }) {
   const showToast = (message: string) => {
     const id = ++notificationId.current;
     setNotifications((current) => [...current, { id, message, tone: notificationTone(message) }].slice(-4));
-    const timer = window.setTimeout(() => setNotifications((current) => current.filter((item) => item.id !== id)), 3000);
+    const timer = window.setTimeout(() => {
+      notificationTimers.current = notificationTimers.current.filter((item) => item !== timer);
+      setNotifications((current) => current.filter((item) => item.id !== id));
+    }, 3000);
     notificationTimers.current.push(timer);
   };
 
   const authModes: Partial<Record<string, AuthMode>> = { "/login": "login", "/register": "register" };
   const authMode = authModes[activePath];
-  if (authMode) return <LoginPage mode={authMode} onSignedIn={signIn} />;
-  if (activePath === "/forgot-password") return <ForgotPasswordPage />;
-  if (activePath === "/reset-password") return <ResetPasswordPage />;
   const detailMatch = activePath.match(DETAIL_PATTERN);
-  if (detailMatch) {
+  let page: ReactNode;
+  if (authMode) page = <LoginPage mode={authMode} onSignedIn={signIn} />;
+  else if (activePath === "/forgot-password") page = <ForgotPasswordPage />;
+  else if (activePath === "/reset-password") page = <ResetPasswordPage />;
+  else if (detailMatch) {
     const id = Number(detailMatch[1]);
     // key={id}：跨帖切换强制重建，避免 replyText/replyingTo 等草稿状态残留下一个帖子
-    return <ThreadPage key={id} id={id} initialTitle={transitionTitle?.id === id ? transitionTitle.title : undefined} />;
-  }
-  if (activePath === "/post") return <><PostPage onPublished={(id) => { goToThread(id); showToast("Published"); }} /><Notifications items={notifications} /></>;
-  if (activePath === "/profile") return <ProfilePage />;
-  if (activePath === "/settings") return <SettingsPage />;
-  if (activePath === "/admin") return <><AdminPage onNotify={showToast} /><Notifications items={notifications} /></>;
-  if (activePath === "/feedback") return <FeedbackPage />;
-  if (activePath === "/inbox") return <InboxPage />;
+    page = <ThreadPage key={id} id={id} initialTitle={transitionTitle?.id === id ? transitionTitle.title : undefined} />;
+  } else if (activePath === "/post") page = <PostPage onPublished={(id) => { goToThread(id); showToast("Published"); }} />;
+  else if (activePath === "/profile") page = <ProfilePage />;
+  else if (activePath === "/settings") page = <SettingsPage />;
+  else if (activePath === "/admin") page = <AdminPage onNotify={showToast} />;
+  else if (activePath === "/feedback") page = <FeedbackPage />;
+  else if (activePath === "/inbox") page = <InboxPage />;
+  else page = <DiscussionApp initialView={discussionView} onViewChange={setDiscussionView} />;
   return (
     <>
-      <DiscussionApp initialView={discussionView} onViewChange={setDiscussionView} />
+      {page}
       <Notifications items={notifications} />
     </>
   );

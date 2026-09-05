@@ -148,8 +148,7 @@ input:-webkit-autofill:active {
   position: sticky;
   top: 0;
   z-index: 20;
-  backdrop-filter: saturate(140%) blur(18px);
-  background: color-mix(in srgb, var(--bg) 86%, transparent);
+  background: var(--bg);
   border-bottom: 1px solid color-mix(in srgb, var(--line) 92%, transparent);
 }
 .topbar-inner { height: 64px; display: flex; align-items: center; justify-content: space-between; gap: 24px; }
@@ -456,9 +455,13 @@ input:-webkit-autofill:active {
   .topbar-inner { height: 56px; }
   .wordmark { font-size: 14px; }
   .compose { display: none; }
-  .search-field { width: 132px; height: 34px; }
-  .actions > .icon-btn { display: none; }
-  .actions > .mobile-menu-trigger { display: grid; }
+  /* 顶栏搜索收起为放大镜图标，聚焦或已有内容时展开；admin 区过滤框（.admin-search）不在顶栏，不受影响。
+     展开只挤压可缩放的 .user-menu-name（overflow 截断），顶栏其余元素宽度固定，不破版。 */
+  .topbar .search-field { width: 34px; height: 34px; padding: 0; gap: 0; justify-content: center; border-color: transparent; background: transparent; cursor: pointer; transition: width .22s cubic-bezier(.22, .8, .24, 1), padding .22s cubic-bezier(.22, .8, .24, 1), border-color .14s ease, background .14s ease; }
+  .topbar .search-field:hover { background: var(--accent-soft); }
+  .topbar .search-field input { width: 0; opacity: 0; pointer-events: none; transition: opacity .12s ease; }
+  .topbar .search-field:focus-within, .topbar .search-field:has(input:not(:placeholder-shown)) { width: min(46vw, 200px); padding: 0 9px 0 11px; gap: 8px; justify-content: flex-start; border-color: color-mix(in srgb, var(--accent) 62%, var(--line)); background: var(--surface); cursor: text; }
+  .topbar .search-field:focus-within input, .topbar .search-field:has(input:not(:placeholder-shown)) input { width: 100%; opacity: 1; pointer-events: auto; }
   .page { padding: 24px 0 48px; }
   .thread-flags { top: 56px; }
   .feed-head { align-items: baseline; padding-bottom: 16px; }
@@ -495,7 +498,6 @@ input:-webkit-autofill:active {
   .settings-nav-accent { display: none; }
   .settings-field-grid { grid-template-columns: 1fr; gap: 21px; }
   .setting-row { gap: 18px; }
-  .user-menu-popover { position: fixed; top: 62px; right: 14px; }
   .login-page { padding: 42px 14px 28px; }
   .login-card { border-radius: 14px; }
   .login-card-content { padding: 25px 22px; }
@@ -532,10 +534,10 @@ input:-webkit-autofill:active {
 .flag { color: var(--muted); font-size: 11.5px; font-weight: 620; letter-spacing: .02em; text-transform: uppercase; border: 1px solid var(--line); border-radius: 999px; padding: 3px 9px; }
 .thread-detail-title { margin: 0 0 10px; font-size: 30px; line-height: 1.25; letter-spacing: -.02em; font-weight: 690; }
 .thread-detail-meta { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 13px; margin-bottom: 22px; }
-.thread-detail-body { font-size: 15.5px; line-height: 1.75; color: var(--ink); }
+.thread-detail-body { font-size: 15.5px; line-height: 1.75; color: var(--ink); overflow-wrap: break-word; }
 .thread-detail-body > :first-child { margin-top: 0; }
 .thread-detail-body img { max-width: 100%; border-radius: 10px; }
-.thread-detail-body pre { background: var(--surface-2); padding: 14px; border-radius: 10px; overflow-x: auto; font-size: 13px; }
+.thread-detail-body pre, .reply-body pre { background: var(--surface-2); padding: 14px; border-radius: 10px; overflow-x: auto; font-size: 13px; }
 .thread-detail-body blockquote { margin: 0; padding-left: 14px; border-left: 3px solid var(--line); color: var(--muted); }
 .thread-detail-body a { color: var(--accent); }
 /* 恢复 markdown 块级元素的垂直间距：Tailwind preflight 清零了 p/ul/ol/blockquote/pre/hr/标题 的 margin，导致空行（段落）被吞 */
@@ -587,8 +589,8 @@ input:-webkit-autofill:active {
 .reply-action, .reply-delete { margin-left: auto; background: none; border: 0; color: var(--faint); font-size: 12px; cursor: pointer; }
 .reply-delete { margin-left: 0; }
 .reply-action:hover, .reply-delete:hover { color: var(--accent); }
-.reply-body { font-size: 14.5px; line-height: 1.7; }
-.reply-body.plain, .thread-detail-body.plain { white-space: pre-wrap; }
+.reply-body { font-size: 14.5px; line-height: 1.7; overflow-wrap: break-word; }
+.reply-body.plain, .thread-detail-body.plain { white-space: pre-wrap; overflow-wrap: anywhere; }
 .reply-deleted { font-size: 13px; color: var(--faint); font-style: italic; }
 .reply-form { margin-top: 24px; padding: 0; background: transparent; border: 0; border-radius: 0; }
 .reply-form .body-field { gap: 10px; }
@@ -607,8 +609,10 @@ input:-webkit-autofill:active {
   position: fixed;
   inset: 0;
   z-index: 90;
+  overflow-y: auto;
   /* 纯黑遮罩，深下去而不是洗灰：--ink 在暗色下是近白，不能拿来叠遮罩 */
   background: rgba(0, 0, 0, .7);
+  -webkit-backdrop-filter: blur(8px);
   backdrop-filter: blur(8px);
   animation: dialog-fade-in .16s ease both;
 }
@@ -620,6 +624,8 @@ input:-webkit-autofill:active {
   transform: translate(-50%, -50%);
   width: calc(100% - 40px);
   max-width: 380px;
+  max-height: calc(100dvh - 32px);
+  overflow-y: auto;
   padding: 22px 22px 18px;
   border: 1px solid var(--line);
   border-radius: 16px;
@@ -775,15 +781,21 @@ html body[data-scroll-locked] {
 }
 
 /* ---------- 移动端汉堡全屏菜单 ---------- */
-/* 触发按钮：桌面有完整导航，隐藏；移动端显示（640px 块里的覆盖规则负责） */
+/* 触发按钮：桌面有完整导航，隐藏；≤900px 起显示（与 primary-nav 隐藏断点对齐），
+   ≤640px 块里的 .actions 覆盖规则继续生效。 */
 .mobile-menu-trigger { display: none; }
+
+@media (max-width: 900px) {
+  .mobile-menu-trigger { display: grid; }
+}
 
 .mobile-menu {
   position: fixed; inset: 0; z-index: 90;
   display: flex; flex-direction: column;
-  padding: 0 max(calc((100vw - var(--content)) / 2), 14px);
+  padding: 0 max(calc((100% - var(--content)) / 2), 14px);
   background: var(--bg);
   overflow-y: auto;
+  overscroll-behavior: contain;
   animation: menuFadeIn 200ms ease forwards;
 }
 .mobile-menu.closing { animation: menuFadeOut 260ms ease forwards; }
@@ -883,7 +895,7 @@ html body[data-scroll-locked] {
 .feedback-project.active small { color: var(--muted); }
 .feedback-main { min-width: 0; }
 .feedback-field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
-.feedback-modal { width: 480px; max-width: 100%; }
+.feedback-modal { width: min(480px, calc(100% - 40px)); }
 .feedback-modal .form-field { margin-bottom: 14px; }
 .fb-seq { color: var(--faint); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; font-weight: 500; }
 .fb-detail { white-space: pre-wrap; margin-top: 4px; }
@@ -967,7 +979,7 @@ html body[data-scroll-locked] {
 .tasks-done[open] summary::before { transform: translateY(2px) rotate(225deg); }
 .tasks-done summary:hover { color: var(--ink); }
 
-.tasks-modal { width: 480px; max-width: 100%; }
+.tasks-modal { width: min(480px, calc(100% - 40px)); }
 .tasks-modal .form-field { margin-bottom: 14px; }
 
 @media (max-width: 900px) {
@@ -1054,4 +1066,36 @@ html body[data-scroll-locked] {
 .new-message-head strong { color: var(--ink); font-size: 13px; font-weight: 620; }
 .new-message textarea { width: 100%; min-height: 72px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; outline: 0; background: var(--bg); color: var(--ink); font-size: 13px; line-height: 1.5; resize: vertical; }
 .new-message textarea:focus { border-color: color-mix(in srgb, var(--accent) 62%, var(--line)); }
+
+/* ---- 移动端输入字号 + 触控热区（≤640px） ---- */
+@media (max-width: 640px) {
+  /* iOS 对字号 <16px 的输入框聚焦时会自动缩放页面；!important 压过各处 class 级字号 */
+  input, textarea, select { font-size: 16px !important; }
+
+  /* 44px 触控热区：视觉尺寸不变，用 ::before 向外扩点击范围 */
+  .task-toggle,
+  .settings-toggle,
+  .board-option,
+  .admin-btn,
+  .admin-pill,
+  .inbox-tab,
+  .format-toggle-btn,
+  .reply-action,
+  .reply-delete { position: relative; }
+  .task-toggle::before { content: ""; position: absolute; inset: -11px; }
+  .settings-toggle::before { content: ""; position: absolute; inset: -11px -3px; }
+  .board-option::before { content: ""; position: absolute; inset: -6px 0; }
+  .admin-btn::before,
+  .admin-pill::before,
+  .inbox-tab::before { content: ""; position: absolute; inset: -7px -4px; }
+  .format-toggle-btn::before { content: ""; position: absolute; inset: -8px -4px; }
+  .reply-action::before,
+  .reply-delete::before { content: ""; position: absolute; inset: -15px -10px; }
+  .password-visibility::before { content: ""; position: absolute; inset: -2px -3px; }
+}
 .new-message .primary-action { align-self: flex-end; }
+
+/* ---- 触屏设备输入字号 ≥16px：iPad 桌面档布局（>640px）聚焦输入框也会被 Safari 缩放，按设备能力而非宽度兜底 ---- */
+@media (hover: none) and (pointer: coarse) {
+  input, textarea, select { font-size: 16px !important; }
+}
